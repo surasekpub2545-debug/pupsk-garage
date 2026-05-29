@@ -4,7 +4,29 @@ Opens directly to the Cockpit screen. User taps CONNECT to pair with the
 Super Connext BLE box, or the app auto-reconnects to the last used device
 on startup.
 """
-import os, sys, asyncio, threading
+import os, sys, asyncio, threading, traceback
+
+
+def _install_crash_handler():
+    """Catch any uncaught exception so we get a logcat trace instead of
+    a silent SIGSEGV / instant-exit on Android."""
+    def _hook(exc_type, exc_value, tb):
+        msg = ''.join(traceback.format_exception(exc_type, exc_value, tb))
+        try: print('[FATAL]\n' + msg)
+        except Exception: pass
+        # Also write to app data dir so we can read after a crash
+        try:
+            from kivy.app import App
+            base = App.get_running_app().user_data_dir \
+                   if App.get_running_app() else os.getcwd()
+            with open(os.path.join(base, 'last_crash.txt'),
+                       'w', encoding='utf-8') as f:
+                f.write(msg)
+        except Exception: pass
+    sys.excepthook = _hook
+
+
+_install_crash_handler()
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 

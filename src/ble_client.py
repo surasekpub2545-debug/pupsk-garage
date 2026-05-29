@@ -16,12 +16,18 @@ from typing import Callable, Optional
 
 # Pick the right backend at module load.  On Android, jnius is importable
 # and the AndroidBleClient replaces the desktop bleak-based class below.
+# Any failure here falls back to the desktop class so a misbehaving JNI
+# environment never blocks the app from starting up.
+_USING_ANDROID = False
 try:
     import jnius  # noqa: F401
-    from src.ble_client_android import AndroidBleClient as BleClient
-    _USING_ANDROID = True
+    try:
+        from src.ble_client_android import AndroidBleClient as BleClient
+        _USING_ANDROID = True
+    except Exception as e:
+        print(f'[ble] android backend import failed: {e}')
 except Exception:
-    _USING_ANDROID = False
+    pass
 
 # UUIDs
 HM10_SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb'

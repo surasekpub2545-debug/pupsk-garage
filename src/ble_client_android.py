@@ -16,15 +16,32 @@ import asyncio
 import threading
 from typing import Callable, Optional
 
-from jnius import autoclass, cast, PythonJavaClass, java_method
+from jnius import PythonJavaClass, java_method
 
-# ── Java classes ────────────────────────────────────────────────────
-BluetoothAdapter            = autoclass('android.bluetooth.BluetoothAdapter')
-BluetoothGatt               = autoclass('android.bluetooth.BluetoothGatt')
-BluetoothGattCharacteristic = autoclass('android.bluetooth.BluetoothGattCharacteristic')
-BluetoothGattDescriptor     = autoclass('android.bluetooth.BluetoothGattDescriptor')
-UUID                        = autoclass('java.util.UUID')
-PythonActivity              = autoclass('org.kivy.android.PythonActivity')
+# Java classes are loaded lazily on first use, NOT at module import.
+# Importing them at module load can race the JNI bootstrap and crash
+# the whole app before Kivy is on screen.
+BluetoothAdapter            = None
+BluetoothGatt               = None
+BluetoothGattCharacteristic = None
+BluetoothGattDescriptor     = None
+UUID                        = None
+PythonActivity              = None
+
+
+def _ensure_java():
+    """Load the Android Java classes the first time we need them."""
+    global BluetoothAdapter, BluetoothGatt, BluetoothGattCharacteristic
+    global BluetoothGattDescriptor, UUID, PythonActivity
+    if BluetoothAdapter is not None:
+        return
+    from jnius import autoclass
+    BluetoothAdapter            = autoclass('android.bluetooth.BluetoothAdapter')
+    BluetoothGatt               = autoclass('android.bluetooth.BluetoothGatt')
+    BluetoothGattCharacteristic = autoclass('android.bluetooth.BluetoothGattCharacteristic')
+    BluetoothGattDescriptor     = autoclass('android.bluetooth.BluetoothGattDescriptor')
+    UUID                        = autoclass('java.util.UUID')
+    PythonActivity              = autoclass('org.kivy.android.PythonActivity')
 
 # Super Connext UUIDs (short forms — match on substring of 128-bit form)
 HM10_SERVICE_UUID = 'ffe0'
@@ -106,7 +123,12 @@ class _GattCB(PythonJavaClass):
 # ── Public client ───────────────────────────────────────────────────
 class AndroidBleClient:
     def __init__(self):
-        self.adapter = BluetoothAdapter.getDefaultAdapter()
+        _ensure_java()
+        try:
+            self.adapter = BluetoothAdapter.getDefaultAdapter()
+        except Exception as e:
+            print(f'[ble-android] getDefaultAdapter err: {e}')
+            self.adapter = None
         self.scanner = None
         try:
             if self.adapter is not None:
