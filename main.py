@@ -122,11 +122,21 @@ class HondaECUCockpitApp(App):
         self.recorder = SessionRecorder()
         self.player = SessionPlayer(on_sample=self._dispatch_live)
 
-        # GPS — used for speed display in the tachometer center
+        # GPS — used for speed display in the tachometer center.
+        # NOT started automatically: on Android emulators (BlueStacks,
+        # Genymotion, etc.) the LocationListener fires through a JNI
+        # proxy and houdini's ARM translation can't detach the thread
+        # mid-call → SIGABRT.  Start via app.start_gps() once the user
+        # is on a real device (e.g. from Settings or a one-time prompt).
         self.gps = GpsProvider()
         self.gps.set_speed_callback(self._on_gps_speed)
-        started = self.gps.start()
-        print(f'[gps] started: {started}')
+        print('[gps] provider ready (call app.start_gps() to enable)')
+
+    def start_gps(self) -> bool:
+        """Explicitly start GPS — call once the user opts in."""
+        ok = self.gps.start()
+        print(f'[gps] started: {ok}')
+        return ok
 
         # Root layout
         root = BoxLayout(orientation='vertical')

@@ -24,7 +24,7 @@ android.api = 34
 android.minapi = 26
 android.ndk_api = 26
 android.ndk = 25b
-android.archs = arm64-v8a, armeabi-v7a, x86_64
+android.archs = arm64-v8a, armeabi-v7a
 
 # Auto-accept all Android SDK licenses (needed for headless CI build)
 android.accept_sdk_license = True
