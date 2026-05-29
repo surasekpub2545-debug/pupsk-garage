@@ -11,6 +11,15 @@ import os, sys, asyncio, threading, traceback
 os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
 os.environ.setdefault('KIVY_NO_ARGS', '1')
 
+# Drop Python's FileFinder directory-listing cache.  On Android, p4a
+# extracts _python_bundle on first launch and FileFinder may have
+# already cached the half-populated `kivy/` directory listing — which
+# is why `import kivy` works (it's at the top level) but `import
+# kivy.input` fails with ModuleNotFoundError even though every file
+# is on disk and `kivy.__path__` is correctly set.
+import importlib
+importlib.invalidate_caches()
+
 
 def _probe_kivy_input():
     """Force-load every kivy.input submodule individually so we can see
