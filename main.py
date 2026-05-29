@@ -6,6 +6,13 @@ on startup.
 """
 import os, sys, asyncio, threading, traceback
 
+# Verbose Kivy logging so any startup failure (SDL2 init, GL context,
+# input provider import) prints exactly which step blew up.  This is
+# read by Kivy at import time, so it has to be set before any kivy
+# import below.
+os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
+os.environ.setdefault('KIVY_NO_ARGS', '1')
+
 
 def _install_crash_handler():
     """Catch any uncaught exception so we get a logcat trace instead of
@@ -107,8 +114,11 @@ class HondaECUCockpitApp(App):
         except Exception: pass
 
     def build(self):
+        print('[boot] build() entered')
         self._set_window_icon()
+        print('[boot] icon set')
         self._request_android_permissions()
+        print('[boot] permissions requested')
         n = honda_dtc.load_dtc_table()
         print(f'[app] Loaded {n} Honda DTC codes')
 
