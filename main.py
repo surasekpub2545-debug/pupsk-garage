@@ -7,11 +7,31 @@ on startup.
 import os, sys, asyncio, threading, traceback
 
 # Verbose Kivy logging so any startup failure (SDL2 init, GL context,
-# input provider import) prints exactly which step blew up.  This is
-# read by Kivy at import time, so it has to be set before any kivy
-# import below.
+# input provider import) prints exactly which step blew up.
 os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
 os.environ.setdefault('KIVY_NO_ARGS', '1')
+
+
+def _probe_kivy_input():
+    """Force-load every kivy.input submodule individually so we can see
+    exactly which one breaks on this device.  Window provider fails at
+    `from kivy.input.provider import MotionEventProvider` with what
+    looks like a misleading 'No module named kivy.input' error."""
+    targets = [
+        'kivy', 'kivy.input', 'kivy.input.shape', 'kivy.input.motionevent',
+        'kivy.input.factory', 'kivy.input.provider',
+        'kivy.input.postproc', 'kivy.input.recorder',
+        'kivy.input.providers',
+    ]
+    import importlib
+    for name in targets:
+        try:
+            m = importlib.import_module(name)
+            print(f'[probe] OK   {name}  ->  {getattr(m, "__file__", "?")}')
+        except Exception as e:
+            print(f'[probe] FAIL {name}: {type(e).__name__}: {e}')
+
+_probe_kivy_input()
 
 
 def _install_crash_handler():
