@@ -31,7 +31,41 @@ def _probe_kivy_input():
         except Exception as e:
             print(f'[probe] FAIL {name}: {type(e).__name__}: {e}')
 
+
+def _probe_filesystem():
+    """List the actual on-disk kivy package layout so we know whether
+    the import failure is because the files aren't on disk or because
+    Python's importer can't see them."""
+    try:
+        import kivy
+        kivy_dir = os.path.dirname(kivy.__file__)
+    except Exception as e:
+        print(f'[fs] cannot get kivy dir: {e}')
+        return
+    print(f'[fs] kivy dir = {kivy_dir}')
+    try:
+        entries = sorted(os.listdir(kivy_dir))
+        print(f'[fs] kivy/ has {len(entries)} entries')
+        for e in entries[:20]:
+            full = os.path.join(kivy_dir, e)
+            kind = 'DIR ' if os.path.isdir(full) else 'FILE'
+            print(f'[fs]   {kind} {e}')
+    except Exception as e:
+        print(f'[fs] cannot list kivy dir: {e}')
+    inp = os.path.join(kivy_dir, 'input')
+    print(f'[fs] kivy/input is_dir = {os.path.isdir(inp)}')
+    init = os.path.join(inp, '__init__.pyc')
+    print(f'[fs] kivy/input/__init__.pyc is_file = {os.path.isfile(init)}')
+    if os.path.isdir(inp):
+        try:
+            print(f'[fs] kivy/input/ contents: '
+                  f'{sorted(os.listdir(inp))[:15]}')
+        except Exception as e:
+            print(f'[fs] cannot list kivy/input: {e}')
+    print(f'[fs] sys.path = {sys.path}')
+
 _probe_kivy_input()
+_probe_filesystem()
 
 
 def _install_crash_handler():
