@@ -32,7 +32,7 @@ android.accept_sdk_license = True
 # Pin python-for-android to a tagged release that bundles Python 3.11
 # (latest p4a defaults to Python 3.14 + NDK r28c, which Kivy 2.3.0 can't
 # compile against — glShaderSource signature changed in NDK 27+).
-p4a.branch = 2024.1.21
+p4a.branch = v2024.01.21
 
 log_level = 2
 
