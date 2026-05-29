@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   workflow_dispatch:        # allow manual run from GitHub UI
 
+# Cancel any in-progress build on the same branch when a new commit arrives
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
