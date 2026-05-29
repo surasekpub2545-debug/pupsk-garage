@@ -44,9 +44,6 @@ jobs:
           path: .buildozer
           key: buildozer-local-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
-
       - name: Build debug APK
         run: |
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64

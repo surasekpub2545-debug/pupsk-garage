@@ -25,6 +25,9 @@ android.minapi = 26
 android.ndk_api = 26
 android.archs = arm64-v8a, armeabi-v7a
 
+# Auto-accept all Android SDK licenses (needed for headless CI build)
+android.accept_sdk_license = True
+
 log_level = 2
 
 [buildozer]
