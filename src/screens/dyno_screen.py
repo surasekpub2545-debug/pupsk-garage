@@ -723,57 +723,41 @@ class DynoScreen(Screen):
     def _on_save_run(self):
         if not self.runs:
             self._set_status('NO RUN TO SAVE', 'ff173f'); return
-        run = self.runs[-1]
+        run  = self.runs[-1]
         afrs = self.run_afrs[-1]
-        try:
-            from tkinter import filedialog, Tk
-            r = Tk(); r.withdraw()
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            path = filedialog.asksaveasfilename(
-                title='Save dyno run',
-                defaultextension='.dyno',
-                initialfile=f'dyno_{ts}.dyno',
-                filetypes=[('Dyno Run', '*.dyno'), ('All', '*.*')])
-            r.destroy()
-        except Exception:
-            path = ''
-        if not path: return
-        spec = self._current_spec()
-        data = {
-            'version':    1,
-            'created':    datetime.now().isoformat(timespec='seconds'),
-            'label':      os.path.splitext(os.path.basename(path))[0],
-            'tire_size':  self._vehicle_vals.get('tire', ''),
-            'spec':       getattr(spec, '__dict__', {}),
-            'samples': [
-                {'t': s.t, 'rpm': s.rpm, 'speed': s.speed,
-                 'accel': s.accel, 'hp': s.hp, 'torque_nm': s.torque_nm,
-                 'afr': afrs[i] if i < len(afrs) else None}
-                for i, s in enumerate(run)
-            ],
-        }
-        try:
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            self._set_status(
-                f'SAVED — {os.path.basename(path)} ({len(run)} SAMPLES)',
-                '00d4ff')
-        except Exception as e:
-            self._set_status(f'SAVE FAILED — {e}', 'ff173f')
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        def _save(path):
+            spec = self._current_spec()
+            data = {
+                'version':    1,
+                'created':    datetime.now().isoformat(timespec='seconds'),
+                'label':      os.path.splitext(os.path.basename(path))[0],
+                'tire_size':  self._vehicle_vals.get('tire', ''),
+                'spec':       getattr(spec, '__dict__', {}),
+                'samples': [
+                    {'t': s.t, 'rpm': s.rpm, 'speed': s.speed,
+                     'accel': s.accel, 'hp': s.hp, 'torque_nm': s.torque_nm,
+                     'afr': afrs[i] if i < len(afrs) else None}
+                    for i, s in enumerate(run)
+                ],
+            }
+            try:
+                with open(path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                self._set_status(
+                    f'SAVED — {os.path.basename(path)} ({len(run)} SAMPLES)',
+                    '00d4ff')
+            except Exception as e:
+                self._set_status(f'SAVE FAILED — {e}', 'ff173f')
+
+        from src.widgets.file_picker import AppFilePicker
+        AppFilePicker(mode='save', subdir='dyno', ext='.dyno',
+                       default_filename=f'dyno_{ts}',
+                       on_pick=_save, title='SAVE DYNO RUN').open()
 
     def _on_load_run(self):
-        try:
-            from tkinter import filedialog, Tk
-            r = Tk(); r.withdraw()
-            paths = filedialog.askopenfilenames(
-                title='Load dyno run(s)',
-                filetypes=[('Dyno Run', '*.dyno'), ('All', '*.*')])
-            r.destroy()
-        except Exception:
-            paths = ()
-        if not paths: return
-        loaded = 0
-        for path in paths:
+        def _load(path):
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -789,29 +773,33 @@ class DynoScreen(Screen):
                         torque_nm= sd.get('torque_nm', 0),
                     ))
                     afrs.append(sd.get('afr'))
-                if not run: continue
+                if not run:
+                    self._set_status('EMPTY FILE', 'ff173f'); return
                 self.runs.append(run); self.run_afrs.append(afrs)
-                label = data.get('label') or os.path.basename(path).replace('.dyno', '')
+                label = data.get('label') or \
+                        os.path.basename(path).replace('.dyno', '')
                 self.run_labels.append(label)
-                loaded += 1
+                while len(self.runs) > 5:
+                    self.runs.pop(0)
+                    self.run_afrs.pop(0)
+                    self.run_labels.pop(0)
+                self.chart.runs = list(self.runs)
+                self.chart.run_afrs = list(self.run_afrs)
+                self.chart.live_run = None
+                self.chart.redraw()
+                try:
+                    peak_hp, peak_tq = dyno.peaks(run)
+                    if peak_hp: self.peak_hp_lbl.text = f'{peak_hp.hp:.1f}'
+                    if peak_tq: self.peak_tq_lbl.text = f'{peak_tq.torque_nm:.1f}'
+                except Exception: pass
+                self._set_status(
+                    f'LOADED {label} — {len(self.runs)} ON CHART', '00d4ff')
             except Exception as e:
-                print(f'[dyno load] {path}: {e}')
-        while len(self.runs) > 5:
-            self.runs.pop(0); self.run_afrs.pop(0); self.run_labels.pop(0)
-        if loaded == 0:
-            self._set_status('LOAD FAILED', 'ff173f'); return
-        self.chart.runs = list(self.runs)
-        self.chart.run_afrs = list(self.run_afrs)
-        self.chart.live_run = None
-        self.chart.redraw()
-        try:
-            peak_hp, peak_tq = dyno.peaks(self.runs[-1])
-            if peak_hp: self.peak_hp_lbl.text = f'{peak_hp.hp:.1f}'
-            if peak_tq: self.peak_tq_lbl.text = f'{peak_tq.torque_nm:.1f}'
-        except Exception: pass
-        self._set_status(
-            f'LOADED {loaded} RUN(S) — TOTAL {len(self.runs)} ON CHART',
-            '00d4ff')
+                self._set_status(f'LOAD FAILED — {e}', 'ff173f')
+
+        from src.widgets.file_picker import AppFilePicker
+        AppFilePicker(mode='open', subdir='dyno', ext='.dyno',
+                       on_pick=_load, title='LOAD DYNO RUN').open()
 
     def _on_compare(self):
         view = ModalView(size_hint=(0.7, 0.75),

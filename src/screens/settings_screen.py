@@ -267,22 +267,14 @@ class SettingsScreen(Screen):
             self.app.apply_background(key)
 
     def _pick_custom_image(self):
-        """Open file picker, then crop dialog for the selected image."""
-        try:
-            from tkinter import filedialog, Tk
-            r = Tk(); r.withdraw()
-            path = filedialog.askopenfilename(
-                title='Pick background image',
-                filetypes=[('Image', '*.png *.jpg *.jpeg *.bmp'),
-                            ('All', '*.*')])
-            r.destroy()
-        except Exception:
-            path = ''
-        if not path: return
-        # Open crop dialog — final path comes back via callback
-        from src.widgets.image_crop_dialog import ImageCropDialog
-        dlg = ImageCropDialog(path, on_apply=self._on_crop_applied)
-        dlg.open()
+        """Open native image picker, then crop dialog for the selected image."""
+        from src.widgets.file_picker import pick_image_native
+
+        def _on_picked(path):
+            from src.widgets.image_crop_dialog import ImageCropDialog
+            ImageCropDialog(path, on_apply=self._on_crop_applied).open()
+
+        pick_image_native(on_pick=_on_picked, title='Pick background image')
 
     def _on_crop_applied(self, cropped_path):
         """Callback after the crop dialog produces the final image."""

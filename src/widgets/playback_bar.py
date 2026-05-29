@@ -91,44 +91,33 @@ class PlaybackBar(BoxLayout):
         rec.stop()
         if not rec.samples:
             return
-        path = ''
-        try:
-            from tkinter import filedialog, Tk
-            r = Tk(); r.withdraw()
-            path = filedialog.asksaveasfilename(
-                title='Save session',
-                defaultextension='.session',
-                filetypes=[('Session', '*.session')],
-                initialfile=time.strftime('session_%Y%m%d_%H%M%S.session'))
-            r.destroy()
-        except Exception:
-            pass
-        if path:
+        from .file_picker import AppFilePicker
+        default = time.strftime('session_%Y%m%d_%H%M%S')
+
+        def _save(path):
             try:
                 rec.save(path)
                 print(f'[session] saved {len(rec.samples)} samples → {path}')
             except Exception as e:
                 print(f'[session] save failed: {e}')
 
+        AppFilePicker(mode='save', subdir='sessions', ext='.session',
+                       default_filename=default, on_pick=_save,
+                       title='SAVE SESSION').open()
+
     def _open_session(self):
-        path = ''
-        try:
-            from tkinter import filedialog, Tk
-            r = Tk(); r.withdraw()
-            path = filedialog.askopenfilename(
-                title='Open session',
-                filetypes=[('Session', '*.session'), ('All', '*.*')])
-            r.destroy()
-        except Exception:
-            pass
-        if not path:
-            return
-        try:
-            self.app.player.load(path)
-            print(f'[session] loaded {len(self.app.player.samples)} '
-                  f'samples (dur {self.app.player.duration:.1f}s)')
-        except Exception as e:
-            print(f'[session] load failed: {e}')
+        from .file_picker import AppFilePicker
+
+        def _load(path):
+            try:
+                self.app.player.load(path)
+                print(f'[session] loaded {len(self.app.player.samples)} '
+                      f'samples (dur {self.app.player.duration:.1f}s)')
+            except Exception as e:
+                print(f'[session] load failed: {e}')
+
+        AppFilePicker(mode='open', subdir='sessions', ext='.session',
+                       on_pick=_load, title='OPEN SESSION').open()
 
     def _toggle_play(self):
         p = self.app.player
