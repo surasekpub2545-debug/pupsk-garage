@@ -63,6 +63,24 @@ def _probe_filesystem():
         except Exception as e:
             print(f'[fs] cannot list kivy/input: {e}')
     print(f'[fs] sys.path = {sys.path}')
+    # Diagnose package layout for kivy itself
+    try:
+        import kivy as _k
+        print(f'[fs] kivy.__path__ = {getattr(_k, "__path__", None)}')
+        print(f'[fs] kivy.__loader__ = {getattr(_k, "__loader__", None)}')
+        sp = getattr(_k, '__spec__', None)
+        print(f'[fs] kivy.__spec__ = {sp}')
+        print(f'[fs] kivy.__spec__.submodule_search_locations = '
+              f'{getattr(sp, "submodule_search_locations", None) if sp else None}')
+    except Exception as e:
+        print(f'[fs] meta inspect err: {e}')
+    # Inspect other sys.path entries for duplicate kivy
+    for p in sys.path:
+        try:
+            if 'kivy' in os.listdir(p):
+                print(f'[fs] DUP "kivy" found in: {p}')
+        except Exception:
+            pass
 
 _probe_kivy_input()
 _probe_filesystem()
