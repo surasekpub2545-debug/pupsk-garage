@@ -18,7 +18,49 @@ os.environ.setdefault('KIVY_NO_ARGS', '1')
 # kivy.input` fails with ModuleNotFoundError even though every file
 # is on disk and `kivy.__path__` is correctly set.
 import importlib
+import importlib.util
 importlib.invalidate_caches()
+
+
+def _force_load_kivy_input():
+    """Manually load kivy.input by pointing at its __init__.pyc on disk.
+
+    Python's auto-discovery cannot find this subpackage on Android even
+    though every file is in place and kivy.__spec__.submodule_search_locations
+    is correct.  Loading it explicitly via importlib.util sidesteps the
+    importer entirely and registers kivy.input in sys.modules so the
+    rest of Kivy can `from kivy.input import ...` normally.
+    """
+    try:
+        import kivy
+    except Exception as e:
+        print(f'[force] cannot import kivy itself: {e}')
+        return
+    kivy_dir = os.path.dirname(kivy.__file__)
+    input_dir = os.path.join(kivy_dir, 'input')
+    # Try .pyc first, then .py
+    for ext in ('.pyc', '.py'):
+        init = os.path.join(input_dir, '__init__' + ext)
+        if os.path.isfile(init):
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    'kivy.input', init,
+                    submodule_search_locations=[input_dir])
+                if spec is None:
+                    print(f'[force] no spec from {init}')
+                    continue
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules['kivy.input'] = mod
+                spec.loader.exec_module(mod)
+                print(f'[force] loaded kivy.input from {init}')
+                return
+            except Exception as e:
+                print(f'[force] exec {init} failed: '
+                      f'{type(e).__name__}: {e}')
+    print('[force] could not locate kivy/input/__init__.*')
+
+
+_force_load_kivy_input()
 
 
 def _probe_kivy_input():
