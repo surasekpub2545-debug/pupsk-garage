@@ -29,6 +29,14 @@ android.archs = arm64-v8a, armeabi-v7a
 # Auto-accept all Android SDK licenses (needed for headless CI build)
 android.accept_sdk_license = True
 
+# Ship the .py source files alongside .pyc.  With .pyc-only packages and
+# PYTHONOPTIMIZE=2, p4a's bundle hits a Python import quirk where
+# `import kivy.input` fails with ModuleNotFoundError even though every
+# file is on disk and kivy.__spec__.submodule_search_locations is right.
+# Keeping the .py sources switches the loader from SourcelessFileLoader
+# to SourceFileLoader, which finds submodules reliably.
+android.no_byte_compile_python = True
+
 # Pin python-for-android to a tagged release that bundles Python 3.11
 # (latest p4a defaults to Python 3.14 + NDK r28c, which Kivy 2.3.0 can't
 # compile against — glShaderSource signature changed in NDK 27+).
