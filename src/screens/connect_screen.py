@@ -229,28 +229,26 @@ class ConnectScreen(Screen):
     async def _connect_async(self, address, name):
         ok = await self.app.ble.connect(address)
         def after(dt):
-            diag = getattr(self.app.ble, 'last_diag', '') or ''
+            log = getattr(self.app.ble, 'log_lines', []) or []
             if ok:
                 app_config.set_last_device(address, name)
-                self.status_lbl.text = (f'[size=12][color=00ff70]'
-                                          f'CONNECTED — {name.upper()}[/color][/size]')
-                self.app.on_connected(address, name)
+                # Show the log briefly then navigate so the user can see
+                # the box layout even on a successful connect.
+                self._show_log('CONNECTED', log, color='00ff70')
+                Clock.schedule_once(
+                    lambda dt2: self.app.on_connected(address, name), 1.5)
             else:
-                # Surface the GATT layout so we can see what the box
-                # actually exposes when a connect attempt fails.
-                self._show_diag('CONNECTION FAILED', diag)
+                self._show_log('CONNECTION FAILED', log, color='ff173f')
                 self.btn_scan.disabled = False
         Clock.schedule_once(after, 0)
 
-    def _show_diag(self, header, diag):
-        self.status_lbl.text = (f'[size=12][color=ff173f]{header}'
-                                  f'[/color][/size]')
+    def _show_log(self, header, log_lines, color='ffc600'):
+        self.status_lbl.text = (f'[size=12][color={color}]{header}'
+                                  f'  (screenshot this)[/color][/size]')
         self.dev_box.clear_widgets()
-        if not diag:
-            diag = '(no service info — GATT discovery returned nothing)'
+        body = '\n'.join(log_lines) if log_lines else '(no log)'
         lbl = Label(
-            text=f'[size=12][color=ffc600]GATT LAYOUT (screenshot this):'
-                 f'[/color]\n[color=cccccc]{diag}[/color][/size]',
+            text=f'[size=12][color=cccccc]{body}[/color][/size]',
             markup=True, size_hint=(1, None),
             halign='left', valign='top')
         lbl.bind(width=lambda l, w: setattr(l, 'text_size', (w - 20, None)))

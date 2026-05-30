@@ -98,9 +98,13 @@ class _GattCB(PythonJavaClass):
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;II)V')
     def onConnState(self, gatt, status, newState):
+        self.client._log(f'onConnState status={status} state={newState}')
         if newState == 2:                  # STATE_CONNECTED
-            try: gatt.discoverServices()
-            except Exception: pass
+            try:
+                ok = gatt.discoverServices()
+                self.client._log(f'discoverServices()={ok}')
+            except Exception as e:
+                self.client._log(f'discoverServices err: {e}')
         else:
             self.client._on_disconnected()
 
@@ -151,6 +155,19 @@ class AndroidBleClient:
         self.last_diag      = ''
         self.rx_bytes       = 0
         self.rx_packets     = 0
+        self.log_lines      = []   # on-screen diagnostic log
+
+    def _log(self, msg):
+        """Record a diagnostic line (also printed to logcat) so the
+        connect screen can show what's happening without adb."""
+        try:
+            print(f'[ble-android] {msg}')
+            self.log_lines.append(msg)
+            # keep last 25 lines
+            if len(self.log_lines) > 25:
+                self.log_lines = self.log_lines[-25:]
+        except Exception:
+            pass
 
     # ── Callbacks ──────────────────────────────────────────
     def set_data_callback(self, cb):
@@ -258,39 +275,37 @@ class AndroidBleClient:
 
     # ── Connect / disconnect ───────────────────────────────
     async def connect(self, address: str) -> bool:
+        self.log_lines = []
+        self._log(f'connect {address}')
         if self.adapter is None:
-            return False
+            self._log('adapter is None'); return False
         try:
             dev = self.adapter.getRemoteDevice(address)
         except Exception as e:
-            print(f'[ble-android] getRemoteDevice err: {e}')
-            return False
+            self._log(f'getRemoteDevice err: {e}'); return False
         if dev is None:
-            return False
+            self._log('remote device None'); return False
         loop = asyncio.get_running_loop()
         self._connect_loop = loop
         self._connect_future = loop.create_future()
         if BleGattHelper is None:
-            print('[ble-android] BleGattHelper Java class missing — '
-                  'rebuild APK with java_src/')
-            return False
-        # Python implements the Listener interface; the Java helper wraps
-        # it in a BluetoothGattCallback subclass.
+            self._log('BleGattHelper Java class MISSING'); return False
+        self._log('BleGattHelper OK')
         self._gatt_listener = _GattCB(self)
         self._gatt_cb = BleGattHelper(self._gatt_listener)
         try:
             ctx = PythonActivity.mActivity.getApplicationContext()
-            # autoConnect = False, TRANSPORT_LE = 2
             try:
                 self._gatt = dev.connectGatt(ctx, False, self._gatt_cb, 2)
             except Exception:
                 self._gatt = dev.connectGatt(ctx, False, self._gatt_cb)
+            self._log('connectGatt called')
         except Exception as e:
-            print(f'[ble-android] connectGatt err: {e}')
-            return False
+            self._log(f'connectGatt err: {e}'); return False
         try:
             ok = await asyncio.wait_for(self._connect_future, timeout=20.0)
         except asyncio.TimeoutError:
+            self._log('TIMEOUT (20s) — no callback fired')
             ok = False
         return ok
 
@@ -302,7 +317,7 @@ class AndroidBleClient:
 
     def _on_services_discovered(self, gatt, status):
         if status != 0:
-            print(f'[ble-android] discovery status={status}')
+            self._log(f'discovery status={status}')
             self._resolve_connect(False); return
 
         notify_ch = None
@@ -313,7 +328,7 @@ class AndroidBleClient:
         try:
             services = gatt.getServices()
         except Exception as e:
-            print(f'[ble-android] getServices err: {e}')
+            self._log(f'getServices err: {e}')
             self._resolve_connect(False); return
 
         for i in range(services.size()):
@@ -354,10 +369,11 @@ class AndroidBleClient:
                         write_ch = ch
 
         self.last_diag = '\n'.join(diag_lines) or '(no custom services)'
-        print('[ble-android] discovered:\n' + self.last_diag)
+        for dl in diag_lines:
+            self._log(dl)
 
         if notify_ch is None:
-            print('[ble-android] no notify/indicate characteristic found')
+            self._log('NO notify/indicate char found')
             self._resolve_connect(False); return
         # If no dedicated write char, reuse the notify char (HM-10 style)
         if write_ch is None:
@@ -378,11 +394,12 @@ class AndroidBleClient:
                 else:
                     cccd.setValue(
                         BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-                gatt.writeDescriptor(cccd)
+                wd = gatt.writeDescriptor(cccd)
+                self._log(f'notify enabled, CCCD write={wd}')
             else:
-                print('[ble-android] CCCD descriptor missing')
+                self._log('CCCD descriptor missing')
         except Exception as e:
-            print(f'[ble-android] enable notify err: {e}')
+            self._log(f'enable notify err: {e}')
 
         self._connected = True
         self._resolve_connect(True)
