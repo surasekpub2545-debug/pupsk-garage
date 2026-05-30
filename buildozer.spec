@@ -4,7 +4,7 @@ package.name = pupskgarage
 package.domain = com.surasek.pupsk
 
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,csv,txt,json,ico
+source.include_exts = py,png,jpg,kv,atlas,csv,txt,json,ico,ttf,otf
 source.include_patterns = assets/*, assets/logo/*, assets/logo/icons/*, assets/fonts/*
 
 version = 1.0.0
