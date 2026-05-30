@@ -451,76 +451,27 @@ class DynoScreen(Screen):
         self.live_ect = self._live_cell(live, 'E C T',  '--', Theme.ACCENT,  0.19)
         root.add_widget(live)
 
-        # ── Chart RPM display range (independent of trigger) ──────
-        cr_range = BoxLayout(orientation='horizontal', size_hint=(1, None),
-                              height=46, spacing=6, padding=(8, 4))
-        paint_bg(cr_range, Theme.BG_PANEL, border=Theme.GRID)
-        cr_range.add_widget(Label(
-            text='[size=13][b]C H A R T   R P M[/b][/size]', markup=True,
-            color=Theme.TEXT_DIM, size_hint=(0.22, 1),
-            halign='right', valign='middle'))
-        cr_range.children[0].bind(size=lambda l, s: setattr(l, 'text_size', s))
-        self.chart_rpm_min = TextInput(
-            text='2000', size_hint=(0.13, 0.85),
-            background_color=Theme.BG_DARK,
-            foreground_color=Theme.PRIMARY, cursor_color=Theme.PRIMARY,
-            font_size=16, halign='center', multiline=False)
-        cr_range.add_widget(self.chart_rpm_min)
-        cr_range.add_widget(Label(
-            text='[size=18][b]→[/b][/size]', markup=True,
-            color=Theme.TEXT_DIM, size_hint=(0.04, 1),
-            halign='center', valign='middle'))
-        self.chart_rpm_max = TextInput(
-            text='13000', size_hint=(0.13, 0.85),
-            background_color=Theme.BG_DARK,
-            foreground_color=Theme.PRIMARY, cursor_color=Theme.PRIMARY,
-            font_size=16, halign='center', multiline=False)
-        cr_range.add_widget(self.chart_rpm_max)
-        btn_apply = RacingButton('apply', primary=True, font_size=14,
-                                   size_hint=(0.12, 0.85))
-        btn_apply.bind(on_release=lambda *a: self._apply_chart_range())
-        cr_range.add_widget(btn_apply)
-        cr_range.add_widget(Label(text='', size_hint=(0.04, 1)))
-        # Redline marker — vertical red line on chart at this RPM
-        cr_range.add_widget(Label(
-            text='[size=12][b]R E D L I N E[/b][/size]', markup=True,
-            color=Theme.DANGER, size_hint=(0.14, 1),
-            halign='right', valign='middle'))
-        cr_range.children[0].bind(size=lambda l, s: setattr(l, 'text_size', s))
-        self.chart_redline = TextInput(
-            text='', size_hint=(0.10, 0.85),
-            background_color=Theme.BG_DARK,
-            foreground_color=Theme.DANGER, cursor_color=Theme.DANGER,
-            font_size=16, halign='center', multiline=False,
-            hint_text='—')
-        cr_range.add_widget(self.chart_redline)
-        root.add_widget(cr_range)
+        # State for all dyno setup values (edited via popup, not inline)
+        self._dyno_cfg = {
+            'chart_rpm_min': 2000.0,
+            'chart_rpm_max': 13000.0,
+            'redline':       0.0,
+            'trig_start':    3000.0,
+            'trig_stop':     9000.0,
+        }
 
-        # ── Quick controls row (vehicle button + trigger RPM) ────
+        # ── Settings row — just two buttons, popups hold the rest ──
         tr = BoxLayout(orientation='horizontal', size_hint=(1, None),
                         height=54, spacing=8, padding=(8, 4))
         paint_bg(tr, Theme.BG_PANEL, border=Theme.GRID)
         btn_veh = RacingButton('vehicle settings', font_size=14,
-                                 size_hint=(0.30, 1))
+                                 size_hint=(0.5, 1))
         btn_veh.bind(on_release=lambda *a: self._open_vehicle_popup())
         tr.add_widget(btn_veh)
-        tr.add_widget(Label(text='', size_hint=(0.04, 1)))
-        for lbl, attr, width, color, default in [
-                ('T R I G  S T A R T', 'start_rpm', 0.30, Theme.WARNING, '3000'),
-                ('T R I G  S T O P',   'stop_rpm',  0.30, Theme.DANGER,  '9000'),
-        ]:
-            tr.add_widget(Label(
-                text=f'[size=13][b]{lbl}[/b][/size]',
-                markup=True, color=Theme.TEXT_DIM,
-                size_hint=(width * 0.55, 1),
-                halign='right', valign='middle'))
-            inp = TextInput(
-                text=default, size_hint=(width * 0.45, 0.8),
-                background_color=Theme.BG_DARK,
-                foreground_color=color, cursor_color=color,
-                font_size=16, halign='center', multiline=False)
-            tr.add_widget(inp)
-            setattr(self, attr, inp)
+        btn_dyno = RacingButton('dyno settings', primary=True, font_size=14,
+                                  size_hint=(0.5, 1))
+        btn_dyno.bind(on_release=lambda *a: self._open_dyno_popup())
+        tr.add_widget(btn_dyno)
         root.add_widget(tr)
 
         # ── Run controls row ────────────────────────────────
@@ -634,6 +585,8 @@ class DynoScreen(Screen):
         self.chart = DynoChartCanvas(on_cursor=self._on_cursor,
                                        size_hint=(1, 1))
         root.add_widget(self.chart)
+        # Sync initial chart range from cfg defaults
+        self._apply_chart_range(redraw=False)
 
     # ── Helpers ─────────────────────────────────────────────
     def _make_toggle(self, label, color, initial, on_change):
@@ -691,11 +644,7 @@ class DynoScreen(Screen):
         Clock.schedule_once(lambda dt: self._force_redraw(), 0)
 
     def on_leave(self, *a):
-        for attr in ('start_rpm', 'stop_rpm'):
-            inp = getattr(self, attr, None)
-            if inp is not None:
-                try: inp.focus = False
-                except Exception: pass
+        pass
 
     def _force_redraw(self):
         try: self.chart.redraw()
@@ -735,34 +684,34 @@ class DynoScreen(Screen):
 
     # ── Chart RPM display range / redline ───────────────────
     def _apply_chart_range(self, redraw=True):
-        """Push the CHART RPM range + redline TextInput values into the
-        chart canvas.  Separate from the auto-trigger thresholds — the
-        chart can show 2000-13000 even if recording runs from 3000-9000."""
-        try:
-            lo = float(self.chart_rpm_min.text)
-        except (ValueError, AttributeError):
-            lo = 2000
-        try:
-            hi = float(self.chart_rpm_max.text)
-        except (ValueError, AttributeError):
-            hi = 13000
+        """Push CHART RPM range + redline + trigger thresholds from
+        self._dyno_cfg into the canvas."""
+        c = self._dyno_cfg
+        lo, hi = c['chart_rpm_min'], c['chart_rpm_max']
         if hi <= lo:
             hi = lo + 1000
         self.chart.rpm_min = lo
         self.chart.rpm_max = hi
-        # Optional redline
-        try:
-            txt = (self.chart_redline.text or '').strip()
-            self.chart.redline = float(txt) if txt else 0
-        except (ValueError, AttributeError):
-            self.chart.redline = 0
+        self.chart.redline = c['redline']
         if redraw:
             self.chart.redraw()
-            self._set_status(
-                f'CHART {int(lo)} → {int(hi)} RPM' +
-                (f'  REDLINE {int(self.chart.redline)}'
-                 if self.chart.redline else ''),
-                '00d4ff')
+
+    # ── Dyno settings popup ─────────────────────────────────
+    def _open_dyno_popup(self):
+        from src.screens.dyno_settings_popup_chart import DynoSettingsPopup
+        DynoSettingsPopup(self._dyno_cfg, on_save=self._apply_dyno_cfg).open()
+
+    def _apply_dyno_cfg(self, new_cfg):
+        self._dyno_cfg.update(new_cfg)
+        self._apply_chart_range(redraw=True)
+        self._set_status(
+            f'CHART {int(new_cfg["chart_rpm_min"])} → '
+            f'{int(new_cfg["chart_rpm_max"])} RPM, '
+            f'TRIG {int(new_cfg["trig_start"])} → '
+            f'{int(new_cfg["trig_stop"])} RPM' +
+            (f', REDLINE {int(new_cfg["redline"])}'
+             if new_cfg.get("redline") else ''),
+            '00d4ff')
 
     # ── Vehicle settings ────────────────────────────────────
     def _open_vehicle_popup(self):
@@ -816,10 +765,8 @@ class DynoScreen(Screen):
             else:
                 self._set_status('CANCELLED', 'ffc600')
             return
-        try:
-            s = float(self.start_rpm.text); e = float(self.stop_rpm.text)
-        except:
-            self._set_status('INVALID RPM THRESHOLDS', 'ff173f'); return
+        s = self._dyno_cfg['trig_start']
+        e = self._dyno_cfg['trig_stop']
         if e <= s:
             self._set_status('STOP RPM MUST BE > START RPM', 'ff173f'); return
         self.samples = []
@@ -1019,8 +966,7 @@ class DynoScreen(Screen):
         except Exception: pass
 
         if self.state == 'armed':
-            try: start_rpm = float(self.start_rpm.text)
-            except: start_rpm = 3000
+            start_rpm = self._dyno_cfg['trig_start']
             if rpm >= start_rpm:
                 self.state = 'recording'
                 self.t0 = time.time(); self.samples = []
@@ -1041,8 +987,7 @@ class DynoScreen(Screen):
                     self.chart.live_afrs = afrs
                     self.chart.redraw()
             except Exception: pass
-            try: stop_rpm = float(self.stop_rpm.text)
-            except: stop_rpm = 9000
+            stop_rpm = self._dyno_cfg['trig_stop']
             if rpm >= stop_rpm:
                 self.state = 'idle'
                 self.btn_run.text = '  '.join('start'.upper())
