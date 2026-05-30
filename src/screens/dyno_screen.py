@@ -89,6 +89,7 @@ class DynoChartCanvas(Widget):
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
             return False
+        print(f'[chart] touch at x={touch.x:.0f} y={touch.y:.0f}')
         self._set_cursor_from_x(touch.x)
         return True
 
@@ -127,10 +128,12 @@ class DynoChartCanvas(Widget):
             run = self.runs[-1]
             afrs = self.run_afrs[-1] if self.run_afrs else []
         else:
-            self._on_cursor(None)
+            # No runs loaded — still report the cursor RPM so the user
+            # gets immediate feedback that the tap registered.
+            self._on_cursor({'rpm': self.cursor_rpm, 'no_data': True})
             return
         if not run:
-            self._on_cursor(None)
+            self._on_cursor({'rpm': self.cursor_rpm, 'no_data': True})
             return
         # nearest sample by RPM
         best_i, best_d = 0, float('inf')
@@ -206,6 +209,16 @@ class DynoChartCanvas(Widget):
                             pos=(x + (w - tx.width) / 2,
                                   y + (h - tx.height) / 2),
                             size=tx.size)
+                # Draw cursor line even with no data so user gets
+                # visual feedback that the tap registered
+                if self.cursor_rpm is not None:
+                    frac = (self.cursor_rpm - self.rpm_min) / \
+                        max(1, self.rpm_max - self.rpm_min)
+                    frac = max(0, min(1, frac))
+                    cx = x + m_l + plot_w * frac
+                    Color(1, 1, 1, 0.85)
+                    Line(points=[cx, y + m_b, cx, y + h - m_t],
+                         width=1.5)
                 return
 
             # Build (sample, afr) pair lists per run, filtered by RPM window
@@ -633,6 +646,16 @@ class DynoScreen(Screen):
             self.cursor_lbl.text = ('[size=14][color=99aacc]'
                 'แตะที่กราฟเพื่อดูค่าในช่วง RPM นั้น'
                 '[/color][/size]')
+            return
+        # No-data path — just show the cursor RPM
+        if info.get('no_data'):
+            self.cursor_lbl.text = (
+                f'[size=16][b]'
+                f'[color=ffffff]{int(info["rpm"])}[/color] '
+                f'[color=66798a]RPM[/color]   '
+                f'[color=99aacc](ยังไม่มี'
+                f'ข้อมูล — START / LOAD A RUN)'
+                f'[/color][/b][/size]')
             return
         afr_s = f'{info["afr"]:.1f}' if info.get('afr') else '--'
         self.cursor_lbl.text = (
