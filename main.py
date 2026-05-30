@@ -166,8 +166,10 @@ Config.set('graphics', 'width',  '1280')
 Config.set('graphics', 'height', '720')
 Config.set('graphics', 'minimum_width',  '800')
 Config.set('graphics', 'minimum_height', '480')
-# Multisample anti-aliasing for smoother fonts and gauge curves
-Config.set('graphics', 'multisamples', '4')
+# Multisample anti-aliasing for smoother fonts and gauge curves.
+# 0 on Android — BlueStacks/houdini GL ES drivers silently drop frames
+# with MSAA enabled, leaving a fully black canvas.
+Config.set('graphics', 'multisamples', '0')
 
 # Register Thai-capable font BEFORE any Kivy widget is created
 from src.font_setup import setup_fonts
