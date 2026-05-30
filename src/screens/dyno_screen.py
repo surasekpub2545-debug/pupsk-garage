@@ -787,19 +787,23 @@ class DynoScreen(Screen):
         big.redline    = self.chart.redline
         stage.add_widget(big)
 
-        # Stats overlay — top-left, doesn't block taps because we set
-        # disabled-style attributes.  Using a Label with text_size lets
-        # us anchor to the corner.
+        # Stats overlay — top-left, in its own dark box so the chart's
+        # top accent line / grid don't cut through the text.  Wrapped in
+        # a BoxLayout that we paint with a semi-transparent dark fill.
+        stats_box = BoxLayout(
+            orientation='vertical',
+            size_hint=(None, None), size=(560, 122),
+            pos_hint={'x': 0.005, 'top': 0.99},
+            padding=(14, 10))
+        paint_bg(stats_box, (0, 0, 0, 0.78), border=Theme.PRIMARY)
         stats = Label(
-            text=_stats_text(),
-            markup=True, color=Theme.TEXT,
-            halign='left', valign='top',
-            size_hint=(None, None), size=(440, 110),
-            pos_hint={'left': 1, 'top': 1})
-        # text_size keeps the label's text inside its box for left-align
+            text=_stats_text(), markup=True, color=Theme.TEXT,
+            halign='left', valign='top')
         stats.bind(size=lambda l, s: setattr(l, 'text_size', s))
-        stats.disabled = True   # don't swallow touches meant for chart
-        stage.add_widget(stats)
+        stats.disabled = True
+        stats_box.add_widget(stats)
+        stats_box.disabled = True   # don't swallow taps for the chart
+        stage.add_widget(stats_box)
 
         def _do_save_png(*_):
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
