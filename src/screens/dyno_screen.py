@@ -787,23 +787,16 @@ class DynoScreen(Screen):
         big.redline    = self.chart.redline
         stage.add_widget(big)
 
-        # Stats overlay — top-left, in its own dark box so the chart's
-        # top accent line / grid don't cut through the text.  Wrapped in
-        # a BoxLayout that we paint with a semi-transparent dark fill.
-        stats_box = BoxLayout(
-            orientation='vertical',
-            size_hint=(None, None), size=(560, 122),
-            pos_hint={'x': 0.005, 'top': 0.99},
-            padding=(14, 10))
-        paint_bg(stats_box, (0, 0, 0, 0.78), border=Theme.PRIMARY)
+        # Stats overlay — sits below the chart's top accent line so the
+        # cyan stripe doesn't cut through the text.
         stats = Label(
             text=_stats_text(), markup=True, color=Theme.TEXT,
-            halign='left', valign='top')
+            halign='left', valign='top',
+            size_hint=(None, None), size=(560, 110),
+            pos_hint={'x': 0.01, 'top': 0.94})
         stats.bind(size=lambda l, s: setattr(l, 'text_size', s))
-        stats.disabled = True
-        stats_box.add_widget(stats)
-        stats_box.disabled = True   # don't swallow taps for the chart
-        stage.add_widget(stats_box)
+        stats.disabled = True   # don't swallow taps meant for the chart
+        stage.add_widget(stats)
 
         def _do_save_png(*_):
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
