@@ -78,7 +78,8 @@ class _DesktopBleClient:
                 # Filter: match service UUID OR name containing common keywords
                 relevant = (HM10_SERVICE in uuids or BLE5_SERVICE in uuids or
                             any(kw in name.lower() for kw in
-                                ('connext', 'ecu', 'hm-10', 'hm10', 'bt05')))
+                                ('scnext', 'connext', 'ecu',
+                                 'hm-10', 'hm10', 'bt05')))
                 devices.append({
                     'address':   addr,
                     'name':      name or '(unnamed)',

@@ -108,13 +108,15 @@ class _GattCB(PythonJavaClass):
     def onServicesDiscovered(self, gatt, status):
         self.client._on_services_discovered(gatt, status)
 
-    @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V')
-    def onCharChanged(self, gatt, ch):
+    @java_method('(Ljava/lang/String;)V')
+    def onCharChangedValue(self, latin1):
+        # Java sends the notification payload as an ISO-8859-1 string so
+        # getValue() (null on API 33+) is never needed. Re-encode 1:1.
         try:
-            val = ch.getValue()
-            if val is not None:
-                self.client._on_notify_bytes(bytes(val))
-        except Exception: pass
+            if latin1:
+                self.client._on_notify_bytes(latin1.encode('latin-1'))
+        except Exception as e:
+            print(f'[ble-android] notify decode err: {e}')
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;I)V')
     def onCharWrite(self, gatt, ch, status):
@@ -182,7 +184,8 @@ class AndroidBleClient:
                     any(HM10_SERVICE_UUID in u for u in uuids) or
                     any(BLE5_SERVICE_UUID in u for u in uuids) or
                     any(kw in name.lower()
-                        for kw in ('connext', 'ecu', 'hm-10', 'hm10', 'bt05')))
+                        for kw in ('scnext', 'connext', 'ecu',
+                                    'hm-10', 'hm10', 'bt05')))
                 out.append({
                     'address':       addr,
                     'name':          name or '(unnamed)',
@@ -362,6 +365,13 @@ class AndroidBleClient:
         self._resolve_connect(False)
 
     def _on_notify_bytes(self, data: bytes):
+        # Diagnostic counter — surfaced on the connect screen so we can
+        # tell "no notifications at all" apart from "data arrives but
+        # doesn't parse".
+        try:
+            self.rx_bytes = getattr(self, 'rx_bytes', 0) + len(data)
+            self.rx_packets = getattr(self, 'rx_packets', 0)
+        except Exception: pass
         self._rx_buf.extend(data)
         while True:
             try: lf = self._rx_buf.index(0x0A)
@@ -371,6 +381,8 @@ class AndroidBleClient:
             try:
                 text = line.decode('utf-8', errors='replace').strip('\r')
             except Exception: continue
+            try: self.rx_packets = getattr(self, 'rx_packets', 0) + 1
+            except Exception: pass
             if self._on_packet:
                 try: self._on_packet(text)
                 except Exception: pass

@@ -150,11 +150,33 @@ class CockpitScreen(Screen):
             except Exception: pass
         except Exception: pass
 
+    def _poll_rx(self, dt):
+        """Show raw RX byte/packet counts while connected so we can tell
+        'no notifications' apart from 'data arrives but doesn't parse'."""
+        if not self._connected:
+            return
+        try:
+            ble = self.app.ble
+            rb = getattr(ble, 'rx_bytes', None)
+            rp = getattr(ble, 'rx_packets', None)
+            if rb is not None:
+                self.conn_lbl.text = (
+                    f'[b][color=00ff70]LIVE[/color][/b]  '
+                    f'[size=11][color=99aacc]'
+                    f'{rb}B/{rp}p[/color][/size]')
+        except Exception: pass
+
     def set_connection_status(self, connected: bool, name: str = ''):
         self._connected = connected
         if connected:
             self.conn_lbl.text = f'[b][color=00ff70]L I V E[/color][/b]'
             self.conn_lbl.color = (1, 1, 1, 1)
+            # Start RX diagnostic poll
+            try:
+                from kivy.clock import Clock
+                if getattr(self, '_rx_ev', None) is None:
+                    self._rx_ev = Clock.schedule_interval(self._poll_rx, 1.0)
+            except Exception: pass
             self.btn_conn.text = 'D I S C O N N E C T'
             self.btn_conn._bg.rgba = None
             self.btn_conn.canvas.before.clear()
