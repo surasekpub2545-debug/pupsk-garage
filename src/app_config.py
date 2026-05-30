@@ -6,24 +6,41 @@ import os, json
 
 
 def _config_dir() -> str:
-    """Get user data directory for config storage.
-    Falls back gracefully on each platform.
+    """Return a stable per-app config directory.
+
+    Module load happens BEFORE App.run() returns, so App.get_running_app()
+    is None at that point and previously this fell back to a desktop path
+    on Android — which meant the load path and the save path (after the
+    App was running) were different folders.  Saved settings worked for
+    one session and disappeared on next launch.
+
+    On Android, p4a sets ANDROID_PRIVATE to the app's private storage; on
+    desktop the App is up by the time we save and user_data_dir resolves.
     """
+    # Android: p4a-provided env var, available from the very first import.
+    private = os.environ.get('ANDROID_PRIVATE')
+    if private:
+        try:
+            os.makedirs(private, exist_ok=True)
+        except Exception:
+            pass
+        return private
+    # Otherwise prefer the running Kivy App if there is one.
     try:
-        # Android: kivy.app.App.user_data_dir
         from kivy.app import App
         app = App.get_running_app()
         if app is not None:
-            return app.user_data_dir
+            d = app.user_data_dir
+            try: os.makedirs(d, exist_ok=True)
+            except Exception: pass
+            return d
     except Exception:
         pass
-    # Desktop fallback: %APPDATA% on Windows, ~/.config on Linux
+    # Desktop fallback: %APPDATA% on Windows, ~/.config on Linux.
     base = os.environ.get('APPDATA') or os.path.expanduser('~/.config')
-    d = os.path.join(base, 'HondaECUCockpit')
-    try:
-        os.makedirs(d, exist_ok=True)
-    except Exception:
-        pass
+    d = os.path.join(base, 'PUP-SK-GARAGE')
+    try: os.makedirs(d, exist_ok=True)
+    except Exception: pass
     return d
 
 
