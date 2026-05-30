@@ -496,36 +496,40 @@ class DynoScreen(Screen):
         cr.add_widget(btn_cmp)
         root.add_widget(cr)
 
-        # ── Peak panel + Cursor info ────────────────────────
+        # ── Combined peak + cursor strip + toggles (compact) ────
         pk = BoxLayout(orientation='horizontal', size_hint=(1, None),
-                        height=96, spacing=6, padding=(14, 8))
+                        height=56, spacing=6, padding=(10, 4))
         paint_bg(pk, Theme.BG_PANEL, border=Theme.GRID)
 
-        # PEAK HP
-        col1 = BoxLayout(orientation='vertical', size_hint=(0.22, 1))
+        # Peak HP
+        col1 = BoxLayout(orientation='horizontal', size_hint=(0.16, 1),
+                          spacing=4)
         col1.add_widget(Label(
-            text='[size=12][b][color=66798a]P E A K   H P[/color][/b][/size]',
-            markup=True, size_hint=(1, None), height=20,
-            halign='center', valign='middle'))
+            text='[size=11][b][color=66798a]PEAK HP[/color][/b][/size]',
+            markup=True, size_hint=(0.45, 1),
+            halign='right', valign='middle'))
         col1.children[0].bind(size=lambda l, s: setattr(l, 'text_size', s))
-        self.peak_hp_lbl = LedNumber('--', color=HP_COLOR, font_size=44,
-                                       halign='center')
+        self.peak_hp_lbl = LedNumber('--', color=HP_COLOR, font_size=24,
+                                       halign='left',
+                                       size_hint=(0.55, 1))
         col1.add_widget(self.peak_hp_lbl)
         pk.add_widget(col1)
 
-        # PEAK NM
-        col2 = BoxLayout(orientation='vertical', size_hint=(0.22, 1))
+        # Peak Nm
+        col2 = BoxLayout(orientation='horizontal', size_hint=(0.16, 1),
+                          spacing=4)
         col2.add_widget(Label(
-            text='[size=12][b][color=66798a]P E A K   N m[/color][/b][/size]',
-            markup=True, size_hint=(1, None), height=20,
-            halign='center', valign='middle'))
+            text='[size=11][b][color=66798a]PEAK Nm[/color][/b][/size]',
+            markup=True, size_hint=(0.45, 1),
+            halign='right', valign='middle'))
         col2.children[0].bind(size=lambda l, s: setattr(l, 'text_size', s))
-        self.peak_tq_lbl = LedNumber('--', color=TQ_COLOR, font_size=44,
-                                       halign='center')
+        self.peak_tq_lbl = LedNumber('--', color=TQ_COLOR, font_size=24,
+                                       halign='left',
+                                       size_hint=(0.55, 1))
         col2.add_widget(self.peak_tq_lbl)
         pk.add_widget(col2)
 
-        # Vertical divider
+        # Divider
         sep = Widget(size_hint=(None, 1), width=2)
         with sep.canvas:
             Color(*Theme.GRID)
@@ -534,32 +538,27 @@ class DynoScreen(Screen):
                   size=lambda *a: setattr(self._sep_r, 'size', sep.size))
         pk.add_widget(sep)
 
-        # CURSOR panel
-        cur = BoxLayout(orientation='vertical', size_hint=(0.55, 1),
-                         padding=(8, 0))
-        cur_head = BoxLayout(orientation='horizontal', size_hint=(1, None),
-                              height=22)
-        cur_head.add_widget(Label(
-            text='[size=12][b][color=66798a]C U R S O R[/color][/b][/size]',
-            markup=True, halign='left', valign='middle'))
-        cur_head.children[0].bind(size=lambda l, s: setattr(l, 'text_size', s))
+        # Cursor info — single label that takes the remaining horizontal
+        # space so the panel is just one short row.
+        self.cursor_lbl = Label(
+            text='[size=13][color=99aacc]'
+                 'แตะที่กราฟเพื่อดูค่าในช่วง RPM นั้น[/color][/size]',
+            markup=True, color=Theme.TEXT,
+            halign='left', valign='middle', size_hint=(0.56, 1))
+        self.cursor_lbl.bind(size=lambda l, s: setattr(l, 'text_size', s))
+        pk.add_widget(self.cursor_lbl)
+
+        # × clear cursor (tiny)
         btn_clr_cur = Button(text='[size=11][color=99aacc]× clear[/color][/size]',
                               markup=True, background_color=(0, 0, 0, 0),
-                              size_hint=(None, 1), width=80,
+                              size_hint=(None, 1), width=70,
                               halign='right', valign='middle')
         btn_clr_cur.bind(size=lambda l, s: setattr(l, 'text_size', s))
         btn_clr_cur.bind(on_release=lambda *a: self._on_clear_cursor())
-        cur_head.add_widget(btn_clr_cur)
-        cur.add_widget(cur_head)
-        self.cursor_lbl = Label(
-            text='[size=14][color=99aacc]แตะที่กราฟเพื่อดูค่าในช่วง RPM นั้น[/color][/size]',
-            markup=True, color=Theme.TEXT, halign='left', valign='middle')
-        self.cursor_lbl.bind(size=lambda l, s: setattr(l, 'text_size', s))
-        cur.add_widget(self.cursor_lbl)
-        pk.add_widget(cur)
+        pk.add_widget(btn_clr_cur)
         root.add_widget(pk)
 
-        # ── Series toggle row ───────────────────────────────
+        # ── Series toggle row + EXPAND button ───────────────
         tg = BoxLayout(orientation='horizontal', size_hint=(1, None),
                         height=36, spacing=6, padding=(8, 4))
         paint_bg(tg, Theme.BG_DARK)
@@ -579,6 +578,10 @@ class DynoScreen(Screen):
             markup=True, halign='right', valign='middle')
         legend.bind(size=lambda l, s: setattr(l, 'text_size', s))
         tg.add_widget(legend)
+        btn_expand = RacingButton('expand', primary=True, font_size=13,
+                                    size_hint=(None, 1), width=110)
+        btn_expand.bind(on_release=lambda *a: self._open_chart_fullscreen())
+        tg.add_widget(btn_expand)
         root.add_widget(tg)
 
         # ── Chart ───────────────────────────────────────────
@@ -700,6 +703,70 @@ class DynoScreen(Screen):
     def _open_dyno_popup(self):
         from src.screens.dyno_settings_popup_chart import DynoSettingsPopup
         DynoSettingsPopup(self._dyno_cfg, on_save=self._apply_dyno_cfg).open()
+
+    # ── Fullscreen chart + Save PNG ─────────────────────────
+    def _open_chart_fullscreen(self):
+        from kivy.app import App
+        view = ModalView(size_hint=(0.98, 0.96),
+                          background_color=(0, 0, 0, 0), background='',
+                          auto_dismiss=True)
+        box = BoxLayout(orientation='vertical', padding=10, spacing=6)
+        paint_bg(box, Theme.BG_DARK, border=Theme.PRIMARY, border_width=2)
+        view.add_widget(box)
+
+        # Top bar — title + buttons
+        head = BoxLayout(orientation='horizontal', size_hint=(1, None),
+                          height=50, spacing=8)
+        head.add_widget(Label(
+            text='[size=22][b][color=00d4ff]'
+                 'D Y N O   C H A R T[/color][/b][/size]',
+            markup=True, halign='left', valign='middle', size_hint=(0.5, 1)))
+        head.children[0].bind(size=lambda l, s: setattr(l, 'text_size', s))
+        head.add_widget(Label(text='', size_hint=(0.2, 1)))
+        btn_png = RacingButton('save png', primary=True, font_size=15,
+                                 size_hint=(0.15, 1))
+        head.add_widget(btn_png)
+        btn_close = RacingButton('close', danger=True, font_size=15,
+                                   size_hint=(0.15, 1))
+        btn_close.bind(on_release=lambda *a: view.dismiss())
+        head.add_widget(btn_close)
+        box.add_widget(head)
+
+        # Big chart that mirrors the live data
+        big = DynoChartCanvas(on_cursor=self._on_cursor, size_hint=(1, 1))
+        big.runs       = list(self.chart.runs)
+        big.run_afrs   = list(self.chart.run_afrs)
+        big.live_run   = self.chart.live_run
+        big.live_afrs  = list(self.chart.live_afrs or [])
+        big.show_hp    = self.chart.show_hp
+        big.show_tq    = self.chart.show_tq
+        big.show_afr   = self.chart.show_afr
+        big.rpm_min    = self.chart.rpm_min
+        big.rpm_max    = self.chart.rpm_max
+        big.redline    = self.chart.redline
+        box.add_widget(big)
+
+        def _do_save_png(*_):
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            base = App.get_running_app().user_data_dir
+            out_dir = os.path.join(base, 'dyno', 'png')
+            try: os.makedirs(out_dir, exist_ok=True)
+            except Exception: pass
+            out = os.path.join(out_dir, f'dyno_{ts}.png')
+            try:
+                ok = big.export_to_png(out)
+            except Exception as e:
+                ok = False
+                print(f'[dyno png] export failed: {e}')
+            if ok:
+                btn_png.text = '  '.join('SAVED'.upper())
+                self._set_status(f'PNG SAVED — {out}', '00ff70')
+            else:
+                btn_png.text = '  '.join('FAILED'.upper())
+                self._set_status('PNG SAVE FAILED', 'ff173f')
+        btn_png.bind(on_release=_do_save_png)
+
+        view.open()
 
     def _apply_dyno_cfg(self, new_cfg):
         self._dyno_cfg.update(new_cfg)
