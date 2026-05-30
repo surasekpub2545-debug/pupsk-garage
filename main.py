@@ -239,6 +239,26 @@ class HondaECUCockpitApp(App):
         except Exception: pass
 
     def build(self):
+        # Temporary minimal-render test to isolate whether Kivy can paint
+        # anything on BlueStacks before bringing the real UI back.
+        from kivy.uix.label import Label as _L
+        from kivy.uix.boxlayout import BoxLayout as _BL
+        from kivy.graphics import Color as _C, Rectangle as _R
+        from kivy.clock import Clock as _CL
+        root = _BL(orientation='vertical')
+        with root.canvas.before:
+            _C(0.8, 0.1, 0.1, 1)            # vivid red so it can't hide
+            self._test_bg = _R(pos=root.pos, size=root.size)
+        root.bind(pos=lambda *a: setattr(self._test_bg, 'pos', root.pos),
+                   size=lambda *a: setattr(self._test_bg, 'size', root.size))
+        root.add_widget(_L(text='[size=120][b]RENDER OK[/b][/size]',
+                            markup=True, color=(1, 1, 1, 1)))
+        # heartbeat to confirm the event loop is actually iterating
+        _CL.schedule_interval(lambda dt: print('[tick]'), 1.0)
+        print('[boot] minimal root built')
+        return root
+
+    def _build_full(self):
         print('[boot] build() entered')
         self._set_window_icon()
         print('[boot] icon set')
