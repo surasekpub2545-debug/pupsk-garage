@@ -226,12 +226,24 @@ class AndroidBleClient:
                                     short = int.from_bytes(
                                         body[j:j+2], 'little')
                                     uuids.append(f'{short:04x}')
-                        elif t == 0x09 and not name:  # complete local name
-                            try: name = body.decode('utf-8', 'replace')
+                        elif t in (0x08, 0x09) and not name:
+                            # 0x08 = shortened name, 0x09 = complete name.
+                            # Decode strictly and drop non-printable bytes
+                            # so a corrupt advert doesn't show as garbage.
+                            try:
+                                nm = body.decode('utf-8', 'ignore')
+                                nm = ''.join(ch for ch in nm if ch.isprintable())
+                                if nm.strip():
+                                    name = nm.strip()
                             except Exception: pass
                         i += length + 1
             except Exception as e:
                 print(f'[ble-android] parse scanRecord err: {e}')
+            # Final sanitize on whatever getName() / advert gave us
+            try:
+                name = ''.join(ch for ch in name if ch.isprintable()).strip()
+            except Exception:
+                name = ''
             with self._scan_lock:
                 self._scan_results[addr] = {
                     'name': name, 'rssi': rssi, 'uuids': uuids}

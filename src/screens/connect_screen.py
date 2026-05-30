@@ -63,6 +63,20 @@ class ConnectScreen(Screen):
         self.btn_scan.bind(on_release=lambda *a: self._on_scan())
         root.add_widget(self.btn_scan)
 
+        # Filter toggle — by default show ONLY likely Super Connext boxes
+        self._show_all = False
+        self._last_scan = []
+        self.btn_filter = Button(
+            text='[size=12][color=99aacc]'
+                 'แสดง: เฉพาะที่น่าจะใช่  (แตะเพื่อแสดงทั้งหมด)'
+                 '[/color][/size]',
+            markup=True, background_color=(0, 0, 0, 0),
+            size_hint=(1, None), height=30,
+            halign='center', valign='middle')
+        self.btn_filter.bind(size=lambda l, s: setattr(l, 'text_size', s))
+        self.btn_filter.bind(on_release=lambda *a: self._toggle_filter())
+        root.add_widget(self.btn_filter)
+
         # Status line
         self.status_lbl = Label(text='[size=12]TAP SCAN TO FIND DEVICES[/size]',
                                  markup=True, color=Theme.TEXT_DIM,
@@ -129,15 +143,46 @@ class ConnectScreen(Screen):
         self.status_lbl.text = f'[size=12]{text}[/size]'
         self.btn_scan.disabled = False
 
+    def _toggle_filter(self):
+        self._show_all = not self._show_all
+        if self._show_all:
+            self.btn_filter.text = ('[size=12][color=99aacc]'
+                'แสดง: ทั้งหมด  (แตะเพื่อกรองเฉพาะที่น่าจะใช่)'
+                '[/color][/size]')
+        else:
+            self.btn_filter.text = ('[size=12][color=99aacc]'
+                'แสดง: เฉพาะที่น่าจะใช่  (แตะเพื่อแสดงทั้งหมด)'
+                '[/color][/size]')
+        self._render_devices(self._last_scan)
+
     def _render_devices(self, devices):
         self.btn_scan.disabled = False
+        self._last_scan = devices
         self.dev_box.clear_widgets()
         if not devices:
             self.status_lbl.text = ('[size=12][color=ff173f]'
                                       'NO DEVICES FOUND — CHECK BLUETOOTH[/color][/size]')
             return
-        self.status_lbl.text = f'[size=12]FOUND {len(devices)} DEVICE(S)[/size]'
-        for d in devices:
+
+        # Filter: default = only named + relevant devices.  When the user
+        # taps "show all" we list every BLE device the radio saw.
+        if self._show_all:
+            shown = devices
+        else:
+            shown = [d for d in devices
+                     if d.get('relevant') or
+                     (d.get('name') and d['name'] != '(unnamed)')]
+            # If filtering hid everything, fall back to showing all so the
+            # user isn't staring at a blank list.
+            if not shown:
+                shown = devices
+
+        self.status_lbl.text = (
+            f'[size=12]FOUND {len(devices)} DEVICE(S)'
+            + (f' — SHOWING {len(shown)}'
+               if len(shown) != len(devices) else '')
+            + '[/size]')
+        for d in shown:
             btn = self._make_device_row(d)
             self.dev_box.add_widget(btn)
 
