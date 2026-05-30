@@ -109,9 +109,10 @@ class TrendsScreen(Screen):
             u_lbl.bind(size=lambda l, s: setattr(l, 'text_size', s))
             head.add_widget(u_lbl)
             wrap.add_widget(head)
-            # Chart
+            # Chart — disable StripChart's built-in tap-to-zoom so our
+            # _TapBox catches the touch and opens the richer modal below.
             c = StripChart(title=key, units=units, low=lo, high=hi,
-                           color=color, size_hint=(1, 1))
+                           color=color, zoomable=False, size_hint=(1, 1))
             wrap.add_widget(c)
             grid.add_widget(wrap)
             self.charts[key] = c
