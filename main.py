@@ -131,6 +131,44 @@ from src.widgets.side_menu       import SideMenu
 class HondaECUCockpitApp(App):
     title = 'PUP-SK GARAGE'
 
+    def _apply_android_immersive(self):
+        """Hide status + nav bars game-style. Uses Android's IMMERSIVE
+        STICKY flags so swiping from an edge briefly reveals them but
+        they auto-hide after a second."""
+        try:
+            from jnius import autoclass
+            from android.runnable import run_on_ui_thread
+            View = autoclass('android.view.View')
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            activity = PythonActivity.mActivity
+            if activity is None:
+                return
+            flags = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
+
+            @run_on_ui_thread
+            def _set_flags():
+                try:
+                    activity.getWindow().getDecorView() \
+                        .setSystemUiVisibility(flags)
+                except Exception as e:
+                    print(f'[android] decorView err: {e}')
+            _set_flags()
+        except Exception:
+            # Not on Android — nothing to do
+            pass
+
+    def on_resume(self):
+        # Re-assert immersive after the system temporarily un-hid the
+        # bars (e.g. user pulled the notification shade down).
+        self._apply_android_immersive()
+
     def _request_android_permissions(self):
         """On Android 12+ BLE scan/connect require runtime permission."""
         try:
@@ -161,6 +199,13 @@ class HondaECUCockpitApp(App):
     def build(self):
         self._set_window_icon()
         self._request_android_permissions()
+        # Schedule immersive after the activity finishes laying out the
+        # first frame — too early and the decorView call is a no-op.
+        try:
+            from kivy.clock import Clock as _Clock
+            _Clock.schedule_once(
+                lambda dt: self._apply_android_immersive(), 0.5)
+        except Exception: pass
         n = honda_dtc.load_dtc_table()
         print(f'[app] Loaded {n} Honda DTC codes')
 

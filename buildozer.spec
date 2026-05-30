@@ -15,7 +15,7 @@ icon.filename = assets/logo/icons/icon_512.png
 presplash.filename = assets/logo/logo_splash.png
 
 orientation = landscape
-fullscreen = 0
+fullscreen = 1
 
 # Bluetooth + storage permissions
 android.permissions = BLUETOOTH, BLUETOOTH_ADMIN, BLUETOOTH_SCAN, BLUETOOTH_CONNECT, ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION, READ_EXTERNAL_STORAGE
