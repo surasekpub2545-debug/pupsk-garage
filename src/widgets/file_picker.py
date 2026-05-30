@@ -196,22 +196,32 @@ class AppFilePicker(ModalView):
 def pick_image_native(on_pick, title='Pick image'):
     """Open the platform's native image picker.
 
-    on_pick(path)  is called with the chosen path (or never if cancelled).
+    on_pick(path) is called with the chosen path (or never if cancelled).
     Uses plyer.filechooser when available; falls back to tkinter.
+
+    The plyer/SAF callback fires from a Java thread on Android, so we
+    bounce on_pick through Clock.schedule_once before touching any Kivy
+    widget — otherwise creating the crop dialog raises
+    'Cannot create graphics instruction outside the main Kivy thread'.
     """
+    from kivy.clock import Clock
+
+    def _main_thread_pick(path):
+        Clock.schedule_once(lambda dt: on_pick(path), 0)
+
     # 1. plyer (works on Android + most desktops)
     try:
         from plyer import filechooser
         def _cb(selection):
             if selection:
-                on_pick(selection[0])
+                _main_thread_pick(selection[0])
         filechooser.open_file(
             title=title, on_selection=_cb,
             filters=[('Image', '*.png', '*.jpg', '*.jpeg', '*.bmp')])
         return
     except Exception:
         pass
-    # 2. tkinter desktop fallback
+    # 2. tkinter desktop fallback (already on the main thread)
     try:
         from tkinter import filedialog, Tk
         r = Tk(); r.withdraw()

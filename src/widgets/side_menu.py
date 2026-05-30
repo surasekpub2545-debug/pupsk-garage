@@ -79,10 +79,12 @@ class SideMenu(ModalView):
         panel.add_widget(Widget(size_hint=(1, None), height=8))
 
         # Menu items
+        # ASCII-only icons — Sarabun has no glyphs for ◉ / ► so they show
+        # as tofu on Android.
         items = [
-            ('◉', 'จัดการอุปกรณ์',          self._goto_connect),
+            ('+', 'จัดการอุปกรณ์',          self._goto_connect),
             ('!', 'อ่านรหัสความผิดพลาด',   self._goto_dtc),
-            ('►', 'ทดสอบความเร็ว',         self._goto_dyno),
+            ('>', 'ทดสอบความเร็ว',         self._goto_dyno),
             ('=', 'ตั้งค่า',                 self._goto_settings),
             ('i', 'เกี่ยวกับเรา',           self._goto_about),
         ]
