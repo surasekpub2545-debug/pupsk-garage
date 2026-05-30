@@ -6,17 +6,12 @@ on startup.
 """
 import os, sys, asyncio, threading, traceback
 
-# Verbose Kivy logging so any startup failure (SDL2 init, GL context,
-# input provider import) prints exactly which step blew up.
-os.environ.setdefault('KIVY_LOG_LEVEL', 'debug')
 os.environ.setdefault('KIVY_NO_ARGS', '1')
 
-# Drop Python's FileFinder directory-listing cache.  On Android, p4a
-# extracts _python_bundle on first launch and FileFinder may have
-# already cached the half-populated `kivy/` directory listing — which
-# is why `import kivy` works (it's at the top level) but `import
-# kivy.input` fails with ModuleNotFoundError even though every file
-# is on disk and `kivy.__path__` is correctly set.
+# Python's FileFinder may cache a half-populated kivy/ directory listing
+# on first launch while p4a is still extracting _python_bundle. Drop the
+# cache and force-load kivy.input below to dodge a transient
+# ModuleNotFoundError that breaks the SDL2 window provider.
 import importlib
 import importlib.util
 importlib.invalidate_caches()
@@ -63,88 +58,13 @@ def _force_load_kivy_input():
 _force_load_kivy_input()
 
 
-def _probe_kivy_input():
-    """Force-load every kivy.input submodule individually so we can see
-    exactly which one breaks on this device.  Window provider fails at
-    `from kivy.input.provider import MotionEventProvider` with what
-    looks like a misleading 'No module named kivy.input' error."""
-    targets = [
-        'kivy', 'kivy.input', 'kivy.input.shape', 'kivy.input.motionevent',
-        'kivy.input.factory', 'kivy.input.provider',
-        'kivy.input.postproc', 'kivy.input.recorder',
-        'kivy.input.providers',
-    ]
-    import importlib
-    for name in targets:
-        try:
-            m = importlib.import_module(name)
-            print(f'[probe] OK   {name}  ->  {getattr(m, "__file__", "?")}')
-        except Exception as e:
-            print(f'[probe] FAIL {name}: {type(e).__name__}: {e}')
-
-
-def _probe_filesystem():
-    """List the actual on-disk kivy package layout so we know whether
-    the import failure is because the files aren't on disk or because
-    Python's importer can't see them."""
-    try:
-        import kivy
-        kivy_dir = os.path.dirname(kivy.__file__)
-    except Exception as e:
-        print(f'[fs] cannot get kivy dir: {e}')
-        return
-    print(f'[fs] kivy dir = {kivy_dir}')
-    try:
-        entries = sorted(os.listdir(kivy_dir))
-        print(f'[fs] kivy/ has {len(entries)} entries')
-        for e in entries[:20]:
-            full = os.path.join(kivy_dir, e)
-            kind = 'DIR ' if os.path.isdir(full) else 'FILE'
-            print(f'[fs]   {kind} {e}')
-    except Exception as e:
-        print(f'[fs] cannot list kivy dir: {e}')
-    inp = os.path.join(kivy_dir, 'input')
-    print(f'[fs] kivy/input is_dir = {os.path.isdir(inp)}')
-    init = os.path.join(inp, '__init__.pyc')
-    print(f'[fs] kivy/input/__init__.pyc is_file = {os.path.isfile(init)}')
-    if os.path.isdir(inp):
-        try:
-            print(f'[fs] kivy/input/ contents: '
-                  f'{sorted(os.listdir(inp))[:15]}')
-        except Exception as e:
-            print(f'[fs] cannot list kivy/input: {e}')
-    print(f'[fs] sys.path = {sys.path}')
-    # Diagnose package layout for kivy itself
-    try:
-        import kivy as _k
-        print(f'[fs] kivy.__path__ = {getattr(_k, "__path__", None)}')
-        print(f'[fs] kivy.__loader__ = {getattr(_k, "__loader__", None)}')
-        sp = getattr(_k, '__spec__', None)
-        print(f'[fs] kivy.__spec__ = {sp}')
-        print(f'[fs] kivy.__spec__.submodule_search_locations = '
-              f'{getattr(sp, "submodule_search_locations", None) if sp else None}')
-    except Exception as e:
-        print(f'[fs] meta inspect err: {e}')
-    # Inspect other sys.path entries for duplicate kivy
-    for p in sys.path:
-        try:
-            if 'kivy' in os.listdir(p):
-                print(f'[fs] DUP "kivy" found in: {p}')
-        except Exception:
-            pass
-
-_probe_kivy_input()
-_probe_filesystem()
-
-
 def _install_crash_handler():
-    """Catch any uncaught exception so we get a logcat trace instead of
-    a silent SIGSEGV / instant-exit on Android."""
+    """Catch uncaught exceptions and print/save a traceback so we get
+    a usable signal even when Android would otherwise abort silently."""
     def _hook(exc_type, exc_value, tb):
         msg = ''.join(traceback.format_exception(exc_type, exc_value, tb))
         try: print('[FATAL]\n' + msg)
         except Exception: pass
-        # Also write to app data dir so we can read after a crash
         try:
             from kivy.app import App
             base = App.get_running_app().user_data_dir \
@@ -239,11 +159,8 @@ class HondaECUCockpitApp(App):
         except Exception: pass
 
     def build(self):
-        print('[boot] build() entered')
         self._set_window_icon()
-        print('[boot] icon set')
         self._request_android_permissions()
-        print('[boot] permissions requested')
         n = honda_dtc.load_dtc_table()
         print(f'[app] Loaded {n} Honda DTC codes')
 
