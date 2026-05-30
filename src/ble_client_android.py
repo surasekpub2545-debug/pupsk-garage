@@ -148,6 +148,9 @@ class AndroidBleClient:
         self._connect_loop: Optional[asyncio.AbstractEventLoop] = None
         self._on_packet: Optional[Callable[[str], None]] = None
         self._rx_buf        = bytearray()
+        self.last_diag      = ''
+        self.rx_bytes       = 0
+        self.rx_packets     = 0
 
     # ── Callbacks ──────────────────────────────────────────
     def set_data_callback(self, cb):
@@ -291,66 +294,98 @@ class AndroidBleClient:
             ok = False
         return ok
 
+    # BluetoothGattCharacteristic property bit flags
+    PROP_WRITE_NO_RESP = 0x04
+    PROP_WRITE         = 0x08
+    PROP_NOTIFY        = 0x10
+    PROP_INDICATE      = 0x20
+
     def _on_services_discovered(self, gatt, status):
         if status != 0:
-            self._resolve_connect(False); return
-        # Pick the right service / characteristics
-        for svc_short in (BLE5_SERVICE_UUID, HM10_SERVICE_UUID):
-            svc = self._find_service(gatt, svc_short)
-            if svc is None:
-                continue
-            if svc_short == HM10_SERVICE_UUID:
-                ch = self._find_char(svc, HM10_CHAR_UUID)
-                if ch:
-                    self._notify_char = ch
-                    self._write_char  = ch
-                    break
-            else:
-                nc = self._find_char(svc, BLE5_NOTIFY_UUID)
-                wc = self._find_char(svc, BLE5_WRITE_UUID)
-                if nc and wc:
-                    self._notify_char = nc
-                    self._write_char  = wc
-                    break
-        if self._notify_char is None or self._write_char is None:
+            print(f'[ble-android] discovery status={status}')
             self._resolve_connect(False); return
 
-        # Enable notifications
+        notify_ch = None
+        write_ch  = None
+        notify_is_indicate = False
+        diag_lines = []
+
+        try:
+            services = gatt.getServices()
+        except Exception as e:
+            print(f'[ble-android] getServices err: {e}')
+            self._resolve_connect(False); return
+
+        for i in range(services.size()):
+            svc = services.get(i)
+            su = svc.getUuid().toString().lower()
+            # Skip the two generic services to keep the diagnostic short
+            if su.startswith('00001800') or su.startswith('00001801'):
+                continue
+            diag_lines.append(f'SVC {su[:8]}')
+            try:
+                chars = svc.getCharacteristics()
+            except Exception:
+                continue
+            for j in range(chars.size()):
+                ch = chars.get(j)
+                cu = ch.getUuid().toString().lower()
+                props = ch.getProperties()
+                flags = ''
+                if props & self.PROP_NOTIFY:        flags += 'N'
+                if props & self.PROP_INDICATE:      flags += 'I'
+                if props & self.PROP_WRITE:         flags += 'W'
+                if props & self.PROP_WRITE_NO_RESP: flags += 'w'
+                diag_lines.append(f'  {cu[:8]} [{flags}]')
+
+                # Notify/indicate characteristic — first one wins, but a
+                # known UUID (fff1/ffe1) is preferred.
+                if (props & (self.PROP_NOTIFY | self.PROP_INDICATE)):
+                    prefer = (BLE5_NOTIFY_UUID in cu or HM10_CHAR_UUID in cu)
+                    if notify_ch is None or prefer:
+                        notify_ch = ch
+                        notify_is_indicate = bool(
+                            props & self.PROP_INDICATE and
+                            not props & self.PROP_NOTIFY)
+                # Write characteristic
+                if (props & (self.PROP_WRITE | self.PROP_WRITE_NO_RESP)):
+                    prefer = (BLE5_WRITE_UUID in cu or HM10_CHAR_UUID in cu)
+                    if write_ch is None or prefer:
+                        write_ch = ch
+
+        self.last_diag = '\n'.join(diag_lines) or '(no custom services)'
+        print('[ble-android] discovered:\n' + self.last_diag)
+
+        if notify_ch is None:
+            print('[ble-android] no notify/indicate characteristic found')
+            self._resolve_connect(False); return
+        # If no dedicated write char, reuse the notify char (HM-10 style)
+        if write_ch is None:
+            write_ch = notify_ch
+
+        self._notify_char = notify_ch
+        self._write_char  = write_ch
+
+        # Enable notifications / indications + write the CCCD
         try:
             gatt.setCharacteristicNotification(self._notify_char, True)
             cccd = self._notify_char.getDescriptor(
                 UUID.fromString(CCCD_UUID))
             if cccd is not None:
-                cccd.setValue(
-                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                if notify_is_indicate:
+                    cccd.setValue(
+                        BluetoothGattDescriptor.ENABLE_INDICATION_VALUE)
+                else:
+                    cccd.setValue(
+                        BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
                 gatt.writeDescriptor(cccd)
+            else:
+                print('[ble-android] CCCD descriptor missing')
         except Exception as e:
             print(f'[ble-android] enable notify err: {e}')
 
         self._connected = True
         self._resolve_connect(True)
-
-    def _find_service(self, gatt, short_uuid):
-        try:
-            services = gatt.getServices()
-        except Exception:
-            return None
-        for i in range(services.size()):
-            svc = services.get(i)
-            if short_uuid in svc.getUuid().toString().lower():
-                return svc
-        return None
-
-    def _find_char(self, svc, short_uuid):
-        try:
-            chars = svc.getCharacteristics()
-        except Exception:
-            return None
-        for i in range(chars.size()):
-            ch = chars.get(i)
-            if short_uuid in ch.getUuid().toString().lower():
-                return ch
-        return None
 
     def _resolve_connect(self, ok: bool):
         f = self._connect_future

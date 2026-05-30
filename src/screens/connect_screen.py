@@ -229,13 +229,30 @@ class ConnectScreen(Screen):
     async def _connect_async(self, address, name):
         ok = await self.app.ble.connect(address)
         def after(dt):
+            diag = getattr(self.app.ble, 'last_diag', '') or ''
             if ok:
                 app_config.set_last_device(address, name)
                 self.status_lbl.text = (f'[size=12][color=00ff70]'
                                           f'CONNECTED — {name.upper()}[/color][/size]')
                 self.app.on_connected(address, name)
             else:
-                self.status_lbl.text = ('[size=12][color=ff173f]'
-                                          'CONNECTION FAILED — TRY AGAIN[/color][/size]')
+                # Surface the GATT layout so we can see what the box
+                # actually exposes when a connect attempt fails.
+                self._show_diag('CONNECTION FAILED', diag)
                 self.btn_scan.disabled = False
         Clock.schedule_once(after, 0)
+
+    def _show_diag(self, header, diag):
+        self.status_lbl.text = (f'[size=12][color=ff173f]{header}'
+                                  f'[/color][/size]')
+        self.dev_box.clear_widgets()
+        if not diag:
+            diag = '(no service info — GATT discovery returned nothing)'
+        lbl = Label(
+            text=f'[size=12][color=ffc600]GATT LAYOUT (screenshot this):'
+                 f'[/color]\n[color=cccccc]{diag}[/color][/size]',
+            markup=True, size_hint=(1, None),
+            halign='left', valign='top')
+        lbl.bind(width=lambda l, w: setattr(l, 'text_size', (w - 20, None)))
+        lbl.bind(texture_size=lambda l, ts: setattr(l, 'height', ts[1] + 10))
+        self.dev_box.add_widget(lbl)
