@@ -29,10 +29,13 @@ UUID                        = None
 PythonActivity              = None
 
 
+BleGattHelper = None  # com.surasek.pupsk.BleGattHelper — our Java wrapper
+
+
 def _ensure_java():
     """Load the Android Java classes the first time we need them."""
     global BluetoothAdapter, BluetoothGatt, BluetoothGattCharacteristic
-    global BluetoothGattDescriptor, UUID, PythonActivity
+    global BluetoothGattDescriptor, UUID, PythonActivity, BleGattHelper
     if BluetoothAdapter is not None:
         return
     from jnius import autoclass
@@ -42,6 +45,11 @@ def _ensure_java():
     BluetoothGattDescriptor     = autoclass('android.bluetooth.BluetoothGattDescriptor')
     UUID                        = autoclass('java.util.UUID')
     PythonActivity              = autoclass('org.kivy.android.PythonActivity')
+    try:
+        BleGattHelper = autoclass('com.surasek.pupsk.BleGattHelper')
+    except Exception as e:
+        print(f'[ble-android] BleGattHelper unavailable: {e}')
+        BleGattHelper = None
 
 # Super Connext UUIDs (short forms — match on substring of 128-bit form)
 HM10_SERVICE_UUID = 'ffe0'
@@ -52,38 +60,36 @@ BLE5_WRITE_UUID   = 'fff2'
 CCCD_UUID         = '00002902-0000-1000-8000-00805f9b34fb'
 
 
-# ── ScanCallback (Java interface) ───────────────────────────────────
+# ── LeScanCallback (legacy interface — pyjnius can implement) ────────
+# The modern android.bluetooth.le.ScanCallback is an abstract CLASS,
+# which pyjnius's PythonJavaClass refuses with
+#   "ScanCallback is not an interface" / IllegalArgumentException.
+# BluetoothAdapter.LeScanCallback is the legacy interface that we CAN
+# implement directly. Deprecated since API 21 but still functional.
 class _ScanCB(PythonJavaClass):
-    __javainterfaces__ = ['android/bluetooth/le/ScanCallback']
-    __javacontext__    = 'app'
+    __javainterfaces__ = [
+        'android/bluetooth/BluetoothAdapter$LeScanCallback']
+    __javacontext__ = 'app'
 
     def __init__(self, on_result):
         super().__init__()
         self._on_result = on_result
 
-    @java_method('(ILandroid/bluetooth/le/ScanResult;)V')
-    def onScanResult(self, callback_type, result):
+    @java_method('(Landroid/bluetooth/BluetoothDevice;I[B)V')
+    def onLeScan(self, device, rssi, scanRecord):
         try:
-            self._on_result(result)
+            self._on_result(device, rssi, scanRecord)
         except Exception as e:
-            print(f'[ble-android] scan_result err: {e}')
-
-    @java_method('(Ljava/util/List;)V')
-    def onBatchScanResults(self, results):
-        try:
-            for i in range(results.size()):
-                self._on_result(results.get(i))
-        except Exception as e:
-            print(f'[ble-android] batch_results err: {e}')
-
-    @java_method('(I)V')
-    def onScanFailed(self, error_code):
-        print(f'[ble-android] scan failed: {error_code}')
+            print(f'[ble-android] LeScan cb err: {e}')
 
 
-# ── BluetoothGattCallback (Java abstract class) ─────────────────────
+# ── BleGattHelper.Listener (Java interface — pyjnius can implement) ──
+# Implements the wrapper interface defined in our Java helper
+# (com.surasek.pupsk.BleGattHelper.Listener) so we can hand it to a
+# Java-side BluetoothGattCallback subclass without pyjnius needing to
+# subclass an abstract Java class itself.
 class _GattCB(PythonJavaClass):
-    __javainterfaces__ = ['android/bluetooth/BluetoothGattCallback']
+    __javainterfaces__ = ['com/surasek/pupsk/BleGattHelper$Listener']
     __javacontext__    = 'app'
 
     def __init__(self, client):
@@ -91,9 +97,8 @@ class _GattCB(PythonJavaClass):
         self.client = client
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;II)V')
-    def onConnectionStateChange(self, gatt, status, newState):
-        # 2 = STATE_CONNECTED
-        if newState == 2:
+    def onConnState(self, gatt, status, newState):
+        if newState == 2:                  # STATE_CONNECTED
             try: gatt.discoverServices()
             except Exception: pass
         else:
@@ -104,7 +109,7 @@ class _GattCB(PythonJavaClass):
         self.client._on_services_discovered(gatt, status)
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V')
-    def onCharacteristicChanged(self, gatt, ch):
+    def onCharChanged(self, gatt, ch):
         try:
             val = ch.getValue()
             if val is not None:
@@ -112,7 +117,7 @@ class _GattCB(PythonJavaClass):
         except Exception: pass
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;I)V')
-    def onCharacteristicWrite(self, gatt, ch, status):
+    def onCharWrite(self, gatt, ch, status):
         pass
 
     @java_method('(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattDescriptor;I)V')
@@ -129,11 +134,6 @@ class AndroidBleClient:
         except Exception as e:
             print(f'[ble-android] getDefaultAdapter err: {e}')
             self.adapter = None
-        self.scanner = None
-        try:
-            if self.adapter is not None:
-                self.scanner = self.adapter.getBluetoothLeScanner()
-        except Exception: pass
         self._scan_cb       = None
         self._scan_results  = {}
         self._scan_lock     = threading.Lock()
@@ -155,19 +155,22 @@ class AndroidBleClient:
     def connected(self) -> bool:
         return self._connected
 
-    # ── Scan ───────────────────────────────────────────────
+    # ── Scan (legacy BluetoothAdapter.startLeScan) ─────────
     async def scan(self, timeout: float = 6.0):
-        if self.scanner is None:
+        if self.adapter is None:
             return []
         self._scan_results = {}
         self._scan_cb = _ScanCB(self._on_scan_result)
         try:
-            self.scanner.startScan(self._scan_cb)
+            ok = bool(self.adapter.startLeScan(self._scan_cb))
+            if not ok:
+                print('[ble-android] startLeScan returned false')
+                return []
         except Exception as e:
-            print(f'[ble-android] startScan err: {e}')
+            print(f'[ble-android] startLeScan err: {e}')
             return []
         await asyncio.sleep(timeout)
-        try: self.scanner.stopScan(self._scan_cb)
+        try: self.adapter.stopLeScan(self._scan_cb)
         except Exception: pass
 
         out = []
@@ -190,24 +193,45 @@ class AndroidBleClient:
         out.sort(key=lambda d: (not d['relevant'], -(d.get('rssi') or -100)))
         return out
 
-    def _on_scan_result(self, result):
+    def _on_scan_result(self, device, rssi, scan_record):
         try:
-            dev  = result.getDevice()
-            addr = dev.getAddress()
+            addr = device.getAddress()
             name = ''
-            try: name = dev.getName() or ''
+            try: name = device.getName() or ''
             except Exception: pass
-            rssi = result.getRssi()
+            # Parse 128-bit service UUIDs out of the raw scan record bytes.
+            # Type 0x06 = incomplete list of 128-bit UUIDs,
+            # type 0x07 = complete list. Each UUID is 16 bytes,
+            # little-endian.
             uuids = []
             try:
-                rec = result.getScanRecord()
-                if rec is not None:
-                    svc_uuids = rec.getServiceUuids()
-                    if svc_uuids is not None:
-                        for i in range(svc_uuids.size()):
-                            u = svc_uuids.get(i).toString().lower()
-                            uuids.append(u)
-            except Exception: pass
+                if scan_record is not None:
+                    raw = bytes(scan_record)
+                    i = 0
+                    while i < len(raw):
+                        length = raw[i]
+                        if length == 0 or i + length >= len(raw): break
+                        t = raw[i + 1]
+                        body = raw[i + 2 : i + 1 + length]
+                        if t in (0x06, 0x07):    # 128-bit UUIDs
+                            n = len(body) // 16
+                            for j in range(n):
+                                u = body[j*16:(j+1)*16][::-1].hex()
+                                uuids.append(
+                                    f'{u[:8]}-{u[8:12]}-{u[12:16]}-'
+                                    f'{u[16:20]}-{u[20:]}')
+                        elif t in (0x02, 0x03):  # 16-bit UUIDs
+                            for j in range(0, len(body), 2):
+                                if j + 2 <= len(body):
+                                    short = int.from_bytes(
+                                        body[j:j+2], 'little')
+                                    uuids.append(f'{short:04x}')
+                        elif t == 0x09 and not name:  # complete local name
+                            try: name = body.decode('utf-8', 'replace')
+                            except Exception: pass
+                        i += length + 1
+            except Exception as e:
+                print(f'[ble-android] parse scanRecord err: {e}')
             with self._scan_lock:
                 self._scan_results[addr] = {
                     'name': name, 'rssi': rssi, 'uuids': uuids}
@@ -228,7 +252,14 @@ class AndroidBleClient:
         loop = asyncio.get_running_loop()
         self._connect_loop = loop
         self._connect_future = loop.create_future()
-        self._gatt_cb = _GattCB(self)
+        if BleGattHelper is None:
+            print('[ble-android] BleGattHelper Java class missing — '
+                  'rebuild APK with java_src/')
+            return False
+        # Python implements the Listener interface; the Java helper wraps
+        # it in a BluetoothGattCallback subclass.
+        self._gatt_listener = _GattCB(self)
+        self._gatt_cb = BleGattHelper(self._gatt_listener)
         try:
             ctx = PythonActivity.mActivity.getApplicationContext()
             # autoConnect = False, TRANSPORT_LE = 2

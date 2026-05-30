@@ -26,6 +26,10 @@ android.ndk_api = 26
 android.ndk = 25b
 android.archs = arm64-v8a, armeabi-v7a
 
+# Custom Java helpers compiled into the APK.  BleGattHelper.java exposes
+# BluetoothGattCallback as a plain interface so pyjnius can implement it.
+android.add_src = java_src
+
 # Auto-accept all Android SDK licenses (needed for headless CI build)
 android.accept_sdk_license = True
 
