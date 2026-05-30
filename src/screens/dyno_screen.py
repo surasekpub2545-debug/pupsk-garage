@@ -707,6 +707,7 @@ class DynoScreen(Screen):
     # ── Fullscreen chart + Save PNG ─────────────────────────
     def _open_chart_fullscreen(self):
         from kivy.app import App
+        from kivy.uix.floatlayout import FloatLayout
         view = ModalView(size_hint=(0.98, 0.96),
                           background_color=(0, 0, 0, 0), background='',
                           auto_dismiss=True)
@@ -732,8 +733,48 @@ class DynoScreen(Screen):
         head.add_widget(btn_close)
         box.add_widget(head)
 
-        # Big chart that mirrors the live data
-        big = DynoChartCanvas(on_cursor=self._on_cursor, size_hint=(1, 1))
+        # Stage = chart with stats overlay floating on top-left
+        stage = FloatLayout(size_hint=(1, 1))
+        box.add_widget(stage)
+
+        # Stats overlay label state — captured here so the on_cursor
+        # callback can update it without poking at attributes set later.
+        peak_hp_txt = self.peak_hp_lbl.text  # current visible value
+        peak_tq_txt = self.peak_tq_lbl.text
+
+        def _stats_text(cursor=None):
+            lines = [
+                f'[size=18][b][color=00d4ff]PUP-SK GARAGE — DYNO[/color][/b][/size]',
+                f'[size=15][color=99aacc]PEAK[/color]  '
+                f'[color={HP_HEX}]{peak_hp_txt} HP[/color]   '
+                f'[color={TQ_HEX}]{peak_tq_txt} Nm[/color][/size]',
+            ]
+            if cursor and not cursor.get('no_data'):
+                afr_s = (f'{cursor["afr"]:.1f}'
+                          if cursor.get('afr') else '--')
+                lines.append(
+                    f'[size=14][color=99aacc]CURSOR[/color]  '
+                    f'[color=ffffff]{int(cursor["rpm"])} RPM[/color]  '
+                    f'[color={HP_HEX}]{cursor["hp"]:.1f} HP[/color]  '
+                    f'[color={TQ_HEX}]{cursor["tq"]:.1f} Nm[/color]  '
+                    f'[color={AFR_HEX}]{afr_s} AFR[/color]  '
+                    f'[color=ffffff]{cursor["speed"]:.0f} km/h[/color]'
+                    f'[/size]')
+            elif cursor and cursor.get('no_data'):
+                lines.append(
+                    f'[size=14][color=99aacc]CURSOR[/color]  '
+                    f'[color=ffffff]{int(cursor["rpm"])} RPM[/color] '
+                    f'[color=99aacc](ยังไม่มีข้อมูล)[/color][/size]')
+            return '\n'.join(lines)
+
+        # Big chart with its own cursor callback that updates both the
+        # screen's main cursor label AND this modal's stats overlay.
+        def _modal_cursor(info):
+            try: self._on_cursor(info)
+            except Exception: pass
+            stats.text = _stats_text(info)
+
+        big = DynoChartCanvas(on_cursor=_modal_cursor, size_hint=(1, 1))
         big.runs       = list(self.chart.runs)
         big.run_afrs   = list(self.chart.run_afrs)
         big.live_run   = self.chart.live_run
@@ -744,7 +785,21 @@ class DynoScreen(Screen):
         big.rpm_min    = self.chart.rpm_min
         big.rpm_max    = self.chart.rpm_max
         big.redline    = self.chart.redline
-        box.add_widget(big)
+        stage.add_widget(big)
+
+        # Stats overlay — top-left, doesn't block taps because we set
+        # disabled-style attributes.  Using a Label with text_size lets
+        # us anchor to the corner.
+        stats = Label(
+            text=_stats_text(),
+            markup=True, color=Theme.TEXT,
+            halign='left', valign='top',
+            size_hint=(None, None), size=(440, 110),
+            pos_hint={'left': 1, 'top': 1})
+        # text_size keeps the label's text inside its box for left-align
+        stats.bind(size=lambda l, s: setattr(l, 'text_size', s))
+        stats.disabled = True   # don't swallow touches meant for chart
+        stage.add_widget(stats)
 
         def _do_save_png(*_):
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -754,7 +809,7 @@ class DynoScreen(Screen):
             except Exception: pass
             out = os.path.join(out_dir, f'dyno_{ts}.png')
             try:
-                ok = big.export_to_png(out)
+                ok = stage.export_to_png(out)
             except Exception as e:
                 ok = False
                 print(f'[dyno png] export failed: {e}')
