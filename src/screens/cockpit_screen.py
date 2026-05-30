@@ -29,11 +29,12 @@ class CockpitScreen(Screen):
                             height=58, spacing=10, padding=(6, 0))
         paint_bg(topbar, Theme.BG_DARK)
 
-        # Hamburger menu (settings)
+        # Menu button (side drawer) — use a plain "MENU" word so it shows
+        # on any platform/font instead of the hamburger ≡ glyph.
         btn_menu = Button(
-            text='[size=30][b]≡[/b][/size]', markup=True,
+            text='[size=18][b]MENU[/b][/size]', markup=True,
             background_color=(0, 0, 0, 0), color=Theme.PRIMARY,
-            size_hint=(None, 1), width=62,
+            size_hint=(None, 1), width=72,
             halign='center', valign='middle')
         btn_menu.bind(on_release=lambda *a: self._open_menu())
         topbar.add_widget(btn_menu)
