@@ -2,10 +2,10 @@
 
 # Carbon-fiber deep blacks — alpha < 1 so the chosen background image bleeds
 # softly through panels. On solid-black bg they look almost the same.
-BG          = (1.0, 0.0, 1.0, 1)          # MAGENTA — diagnostic
-BG_PANEL    = (0.0, 1.0, 1.0, 1)          # CYAN — diagnostic
-BG_DARK     = (1.0, 0.5, 0.0, 1)          # ORANGE — diagnostic
-BG_RACE     = (0.0, 1.0, 0.0, 1)          # GREEN — diagnostic
+BG          = (0.027, 0.031, 0.043, 1)    # #07080b — almost pure carbon black
+BG_PANEL    = (0.067, 0.075, 0.094, 0.78) # #111318 — semi-transparent panel
+BG_DARK     = (0.012, 0.016, 0.024, 0.86) # #030406 — top/bottom strips
+BG_RACE     = (0.043, 0.051, 0.067, 0.82) # #0b0d11 — mid black
 
 # Carbon hex grid lines
 GRID        = (0.118, 0.149, 0.196, 1)    # #1e2632

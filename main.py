@@ -267,12 +267,6 @@ class HondaECUCockpitApp(App):
         self.gps.set_speed_callback(self._on_gps_speed)
         print('[gps] provider ready (call app.start_gps() to enable)')
 
-    def start_gps(self) -> bool:
-        """Explicitly start GPS — call once the user opts in."""
-        ok = self.gps.start()
-        print(f'[gps] started: {ok}')
-        return ok
-
         # Root layout
         root = BoxLayout(orientation='vertical')
         # Background fill (solid color) + optional image overlay
@@ -334,6 +328,12 @@ class HondaECUCockpitApp(App):
         Clock.schedule_once(lambda dt: self._try_auto_reconnect(), 1.5)
 
         return root
+
+    def start_gps(self) -> bool:
+        """Explicitly start GPS — call once the user opts in."""
+        ok = self.gps.start()
+        print(f'[gps] started: {ok}')
+        return ok
 
     def _run_async(self):
         asyncio.set_event_loop(self._loop)
